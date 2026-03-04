@@ -43,6 +43,38 @@ st.markdown("""
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
     --radius: 12px;
+    --sidebar-width: 320px;
+}
+
+/* Mobile burger sidebar */
+.mobile-burger {
+    display: none;
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 9999;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.5rem;
+    box-shadow: var(--shadow-md);
+    cursor: pointer;
+}
+@media (max-width: 768px) {
+    .mobile-burger { display: block; }
+    section[data-testid="stSidebar"] {
+        width: 66.66vw !important;
+        max-width: 400px;
+        position: fixed;
+        height: 100vh;
+        z-index: 9998;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        box-shadow: var(--shadow-lg);
+    }
+    section[data-testid="stSidebar"].open {
+        transform: translateX(0);
+    }
 }
 
 /* Global styles */
@@ -182,6 +214,45 @@ section[data-testid="stSidebar"] .stExpander header {
     font-weight: 600;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
+    margin-right: 0.25rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Mobile burger */
+.mobile-burger {
+    display: none;
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 9999;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.5rem;
+    box-shadow: var(--shadow-md);
+    cursor: pointer;
+    font-size: 1.2rem;
+}
+@media (max-width: 768px) {
+    .mobile-burger { display: block; }
+    section[data-testid="stSidebar"] {
+        width: 66.66vw !important;
+        max-width: 400px;
+        position: fixed;
+        height: 100vh;
+        z-index: 9998;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        box-shadow: var(--shadow-lg);
+    }
+    section[data-testid="stSidebar"].open {
+        transform: translateX(0);
+    }
+}
+@media (min-width: 769px) {
+    button[data-testid="baseButton-secondary"]:has-text("☰") {
+        display: none !important;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -214,7 +285,10 @@ defaults = {
     "active_ai": "gemini-2.5-flash",
     "offline_emails": [],
     "offline_imap": {},
-    "offline_ai": {}
+    "offline_ai": {},
+    "offline_sender_tags": {},
+    "burger_open": False,
+    "current_fetch_filters": {}
 }
 for key, value in defaults.items():
     if key not in st.session_state:
@@ -316,6 +390,40 @@ def get_imap_config():
         except:
             pass
     return st.session_state.offline_imap
+
+# ========== TAG MANAGEMENT ==========
+def get_sender_tags():
+    db = get_firebase_db_cached()
+    if db:
+        try:
+            doc = db.collection("config").document("sender_tags").get()
+            return doc.to_dict() if doc.exists else {}
+        except:
+            pass
+    return st.session_state.get("offline_sender_tags", {})
+
+def save_sender_tags(tags_dict):
+    db = get_firebase_db_cached()
+    if db:
+        try:
+            db.collection("config").document("sender_tags").set(tags_dict)
+            return True
+        except:
+            pass
+    if "offline_sender_tags" not in st.session_state:
+        st.session_state.offline_sender_tags = {}
+    st.session_state.offline_sender_tags.update(tags_dict)
+    return True
+
+def get_tag_colors():
+    return {
+        "work": "#6366f1",
+        "personal": "#10b981",
+        "finance": "#f59e0b",
+        "social": "#ec4899",
+        "promo": "#8b5cf6",
+        "important": "#f43f5e",
+    }
 
 def save_email(email_data):
     db = get_firebase_db_cached()
@@ -503,6 +611,10 @@ def translate_text_google(text):
 # ========== SIDEBAR ==========
 def render_sidebar():
     with st.sidebar:
+        # Mobile burger toggle button
+        if st.button("☰", key="burger_btn", help="Mở menu", type="secondary"):
+            st.session_state.burger_open = not st.session_state.burger_open
+
         # Status indicator
         db = get_firebase_db_cached()
         if db:
@@ -555,6 +667,74 @@ def render_sidebar():
             <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-secondary);">{len(senders)}</div>
         </div>
         """, unsafe_allow_html=True)
+
+        # Burger menu content (context & tags)
+        if st.session_state.burger_open:
+            st.markdown("---")
+            st.markdown("## 📋 Context & Tags")
+            
+            # 1. Context Report
+            st.markdown("### 🔍 Báo cáo Filter hiện tại")
+            filters = st.session_state.current_fetch_filters
+            if filters:
+                st.write(f"**Từ ngày:** {filters.get('start_date')}")
+                st.write(f"**Đến ngày:** {filters.get('end_date')}")
+                st.write(f"**Trạng thái:** {filters.get('read_status')}")
+                if filters.get('sender_filters'):
+                    st.write(f"**Người gửi:** {', '.join(filters['sender_filters'])}")
+                if filters.get('subject_filter'):
+                    st.write(f"**Chủ đề chứa:** {filters['subject_filter']}")
+            else:
+                st.info("Chưa có filter nào được dùng.")
+            
+            st.divider()
+            
+            # 2. Tag Config
+            st.markdown("### 🏷️ Cấu hình Tag")
+            all_senders = get_distinct_senders()
+            selected_sender = st.selectbox(
+                "Chọn người gửi",
+                options=all_senders,
+                index=None,
+                placeholder="Nhấn để chọn...",
+                key="tag_sender_select"
+            )
+            
+            if selected_sender:
+                tags_dict = get_sender_tags()
+                current_tag = tags_dict.get(selected_sender, "")
+                tag_options = [""] + list(get_tag_colors().keys())
+                new_tag = st.selectbox(
+                    "Tag",
+                    options=tag_options,
+                    index=tag_options.index(current_tag) if current_tag in tag_options else 0,
+                    format_func=lambda x: "⛝ Không có" if not x else x.capitalize(),
+                    key="tag_select"
+                )
+                if st.button("💾 Lưu tag", use_container_width=True, key="save_tag_btn"):
+                    if new_tag:
+                        tags_dict[selected_sender] = new_tag
+                    else:
+                        tags_dict.pop(selected_sender, None)
+                    save_sender_tags(tags_dict)
+                    st.toast("Đã lưu tag!", icon="✅")
+                    st.rerun()
+            
+            # Show current tags
+            tags = get_sender_tags()
+            if tags:
+                st.markdown("**Tags hiện tại:**")
+                for sender, tag in tags.items():
+                    color = get_tag_colors().get(tag, "#64748b")
+                    st.markdown(f'<span class="badge" style="background:{color}; color:white;">{tag}: {sender[:20]}{"..." if len(sender)>20 else ""}</span>', unsafe_allow_html=True)
+            else:
+                st.caption("Chưa có tag nào.")
+            
+            # Close button
+            col1, col2 = st.columns([1,3])
+            with col1:
+                if st.button("❌ Đóng", use_container_width=True, key="close_burger"):
+                    st.session_state.burger_open = False
 
         # Spacer to push config to bottom
         st.markdown('<div style="flex-grow: 1; height: 30vh;"></div>', unsafe_allow_html=True)
@@ -667,6 +847,15 @@ def render_fetch_section():
             # Parse filters
             sender_list = [s.strip() for s in sender_filter.split(",") if s.strip()] if sender_filter else None
             subject_kw = subject_filter.strip() if subject_filter else None
+
+            # Store current filters for context report
+            st.session_state.current_fetch_filters = {
+                "start_date": str(start_date),
+                "end_date": str(end_date),
+                "read_status": mail_type,
+                "sender_filters": sender_list,
+                "subject_filter": subject_kw
+            }
 
             status = st.status("⏳ Đang kết nối...", state="running")
             try:
