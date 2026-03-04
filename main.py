@@ -25,13 +25,41 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap');
 * { font-family: 'Be Vietnam Pro', sans-serif !important; }
 #MainMenu, header, .stDeployButton, [data-testid="stStatusWidget"] {display: none !important;}
-::-webkit-scrollbar {width: 6px;}
-::-webkit-scrollbar-thumb {background: #cbd5e1; border-radius: 3px;}
+
+/* Custom Expander Styling */
+.streamlit-expander {
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    margin-bottom: 0.5rem !important;
+    overflow: hidden !important;
+}
+
+.streamlit-expanderHeader {
+    background: white !important;
+    padding: 1rem 1.25rem !important;
+    font-size: 0.9rem !important;
+    color: #334155 !important;
+    border-bottom: 1px solid transparent !important;
+    transition: background 0.2s !important;
+}
+
+.streamlit-expanderHeader:hover {
+    background: #f8fafc !important;
+}
+
+/* Animation when deleting */
+@keyframes fadeOutRight {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(20px); }
+}
+
+.deleting {
+    animation: fadeOutRight 0.3s ease forwards;
+}
 
 .stButton > button {
     border-radius: 6px !important;
     font-weight: 500 !important;
-    font-size: 0.8rem !important;
 }
 .stButton > button[kind="primary"] {
     background: #0f172a !important;
@@ -41,93 +69,33 @@ st.markdown("""
 .stButton > button:not([kind="primary"]) {
     background: transparent !important;
     color: #64748b !important;
-    border: 1px solid #e2e8f0 !important;
+    border: none !important;
 }
 
-.email-table-header {
-    display: grid;
-    grid-template-columns: 2fr 4fr 1fr 2fr 1fr;
-    gap: 1rem;
-    padding: 0.75rem 1rem;
+.stTabs [data-baseweb="tab-list"] {
     border-bottom: 1px solid #e2e8f0;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
 }
-
-.email-row {
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    margin-bottom: 0.5rem;
-    overflow: hidden;
-}
-
-.email-header {
-    display: grid;
-    grid-template-columns: 2fr 4fr 1fr 2fr 1fr;
-    gap: 1rem;
-    padding: 1rem;
-    align-items: center;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-.email-header:hover {
-    background: #f8fafc;
-}
-
-.email-sender {
-    font-weight: 600;
-    color: #0f172a;
-    font-size: 0.9rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.email-subject {
-    color: #475569;
-    font-size: 0.9rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.email-attach {
-    text-align: center;
-    color: #94a3b8;
-}
-
-.email-date {
+.stTabs [data-baseweb="tab"] {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.875rem;
     color: #64748b;
-    font-size: 0.85rem;
+}
+.stTabs [aria-selected="true"] {
+    color: #0f172a !important;
+    border-bottom: 2px solid #0f172a !important;
 }
 
-.email-content {
-    padding: 1.5rem;
-    background: #f8fafc;
-    border-top: 1px solid #e2e8f0;
-}
-
-.delete-btn {
+.delete-btn button {
     color: #ef4444 !important;
-    border-color: #ef4444 !important;
+    font-size: 0.8rem !important;
+    padding: 4px 12px !important;
+    border: 1px solid #ef4444 !important;
+    border-radius: 4px !important;
+    transition: all 0.2s !important;
 }
-.delete-btn:hover {
+.delete-btn button:hover {
     background: #ef4444 !important;
     color: white !important;
-}
-
-@media (max-width: 768px) {
-    .email-table-header { display: none; }
-    .email-header {
-        grid-template-columns: 1fr;
-        gap: 0.5rem;
-    }
-    .email-attach, .email-date { display: none; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -143,11 +111,11 @@ except:
 # ========== STATE ==========
 def init():
     defaults = {
-        "expanded_email": None,
         "translations": {},
         "ai_results": {},
         "offline_emails": [],
-        "config": {"imap": {}, "ai": {"provider": "gemini", "api_key": ""}}
+        "config": {"imap": {}, "ai": {"provider": "gemini", "api_key": ""}},
+        "deleting_id": None
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -347,7 +315,6 @@ def fetch_emails(host, user, pwd, start, end, status="ALL", port=993):
                     "date": msg_date.isoformat() if msg_date else "",
                     "has_attachment": has_attach,
                     "body": body[:2000],
-                    "preview": body[:100].replace("\n", " ").strip()
                 })
             except:
                 continue
@@ -392,7 +359,7 @@ def translate(text):
 def fmt_date(ds):
     try:
         dt = datetime.fromisoformat(ds.replace('Z', '+00:00'))
-        return dt.strftime("%H:%M - %d/%m")
+        return dt.strftime("%H:%M - %d/%m/%Y")
     except:
         return ds[:16].replace("T", " ") if ds else ""
 
@@ -403,7 +370,6 @@ with st.sidebar:
     db = get_db()
     st.success("🟢 Đã kết nối") if db else st.warning("🟡 Offline")
     
-    # IMAP
     st.divider()
     st.markdown("**📧 IMAP**")
     imap = load_cfg("imap")
@@ -420,7 +386,6 @@ with st.sidebar:
             ok, msg = test_imap(h, u, p)
             st.success("✓ OK") if ok else st.error(msg[:50])
     
-    # AI
     st.divider()
     st.markdown("**🤖 AI**")
     ai = load_cfg("ai")
@@ -473,7 +438,7 @@ st.divider()
 emails = get_emails()
 
 if not emails:
-    st.info("📭 Chưa có email")
+    st.info("📭 Hộp thư trống")
 else:
     # Header
     h1, h2 = st.columns([6, 1])
@@ -481,30 +446,19 @@ else:
         st.markdown(f"**{len(emails)} email**")
     with h2:
         if st.button("🗑️ Xóa tất cả"):
-            st.session_state.confirm_delete_all = True
+            st.session_state.confirm_delete = True
     
-    if st.session_state.get("confirm_delete_all"):
-        st.warning("Bạn có chắc muốn xóa tất cả?")
+    if st.session_state.get("confirm_delete"):
+        st.warning("Xóa tất cả email?")
         c1, c2 = st.columns(2)
-        if c1.button("✓ Xác nhận xóa"):
+        if c1.button("✓ Xác nhận"):
             delete_all()
-            st.session_state.confirm_delete_all = False
-            st.success("Đã xóa tất cả!")
+            st.session_state.confirm_delete = False
+            st.success("Đã xóa!")
             st.rerun()
         if c2.button("✗ Hủy"):
-            st.session_state.confirm_delete_all = False
+            st.session_state.confirm_delete = False
             st.rerun()
-    
-    # Table header
-    st.markdown("""
-    <div class="email-table-header">
-        <div>Ngườ gửi</div>
-        <div>Tiêu đề</div>
-        <div style="text-align: center;">📎</div>
-        <div>Ngày giờ</div>
-        <div style="text-align: right;">Xóa</div>
-    </div>
-    """, unsafe_allow_html=True)
     
     # Sort
     try:
@@ -512,65 +466,49 @@ else:
     except:
         pass
     
-    # Email rows
+    # Emails as expanders
     for mail in emails:
         eid = get_eid(mail)
-        is_exp = st.session_state.expanded_email == eid
         
         sender = mail.get("sender_name") or parse_sender(mail.get("from", ""))[0]
         subject = mail.get("subject", "(Không có tiêu đề)")
-        attach = "📎" if mail.get("has_attachment") else ""
+        attach = " 📎" if mail.get("has_attachment") else ""
         date_str = fmt_date(mail.get("date", ""))
         
-        # Row header
-        with st.container():
-            st.markdown('<div class="email-row">', unsafe_allow_html=True)
-            
-            cols = st.columns([2, 4, 1, 2, 1])
-            with cols[0]:
-                st.markdown(f'<div class="email-sender">{sender}</div>', unsafe_allow_html=True)
-            with cols[1]:
-                if st.button(subject, key=f"subj_{eid}", use_container_width=True):
-                    st.session_state.expanded_email = None if is_exp else eid
-                    st.rerun()
-            with cols[2]:
-                st.markdown(f'<div class="email-attach">{attach}</div>', unsafe_allow_html=True)
-            with cols[3]:
-                st.markdown(f'<div class="email-date">{date_str}</div>', unsafe_allow_html=True)
-            with cols[4]:
-                if st.button("🗑️", key=f"del_{eid}"):
+        # Expander label: Sender | Subject | Attach | Date
+        label = f"**{sender}** | {subject}{attach} | *{date_str}*"
+        
+        with st.expander(label, expanded=False):
+            # Delete button inside expander
+            c1, c2 = st.columns([6, 1])
+            with c2:
+                if st.button("🗑️ Xóa", key=f"del_{eid}"):
                     delete_email(eid)
                     st.success("Đã xóa!")
                     st.rerun()
             
-            # Expanded content
-            if is_exp:
-                st.markdown('<div class="email-content">', unsafe_allow_html=True)
-                
-                # Sender info
-                sender_email = mail.get("sender_email") or ""
-                st.markdown(f"**Từ:** {sender} <{sender_email}>")
-                st.divider()
-                
-                # Tabs
-                body = mail.get("body", "")
-                t1, t2, t3 = st.tabs(["📄 Nội dung", "🌐 Dịch", "🤖 AI"])
-                
-                with t1:
-                    st.text_area("", value=body, height=200, disabled=True, label_visibility="collapsed")
-                
-                with t2:
-                    if st.button("🌐 Dịch sang tiếng Việt", key=f"tr_{eid}"):
-                        with st.spinner("Đang dịch..."):
-                            st.session_state.translations[eid] = translate(body)
-                    st.text_area("", value=st.session_state.translations.get(eid, "Nhấn để dịch"), height=200, disabled=True, label_visibility="collapsed")
-                
-                with t3:
-                    if st.button("🤖 Tóm tắt AI", key=f"ai_{eid}"):
-                        with st.spinner("AI đang phân tích..."):
-                            st.session_state.ai_results[eid] = ai_process(body)
-                    st.info(st.session_state.ai_results.get(eid, "Nhấn để tóm tắt"))
-                
-                st.markdown('</div>', unsafe_allow_html=True)
+            # Sender info
+            sender_email = mail.get("sender_email", "")
+            st.markdown(f"**Từ:** {sender} <{sender_email}>" if sender_email else f"**Từ:** {sender}")
+            st.caption(date_str)
+            st.divider()
             
-            st.markdown('</div>', unsafe_allow_html=True)
+            # Content tabs
+            body = mail.get("body", "")
+            tab1, tab2, tab3 = st.tabs(["📄 Nội dung", "🌐 Dịch", "🤖 AI"])
+            
+            with tab1:
+                st.markdown(f'<div style="color: #334155; line-height: 1.7;">{body.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+            
+            with tab2:
+                if st.button("🌐 Dịch sang tiếng Việt", key=f"tr_{eid}"):
+                    with st.spinner("Đang dịch..."):
+                        st.session_state.translations[eid] = translate(body)
+                result = st.session_state.translations.get(eid, "Nhấn nút để dịch email")
+                st.markdown(f'<div style="color: #334155; line-height: 1.7;">{result.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+            
+            with tab3:
+                if st.button("🤖 Tóm tắt AI", key=f"ai_{eid}"):
+                    with st.spinner("AI đang phân tích..."):
+                        st.session_state.ai_results[eid] = ai_process(body)
+                st.info(st.session_state.ai_results.get(eid, "Nhấn nút để AI tóm tắt"))
