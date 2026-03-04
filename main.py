@@ -1,6 +1,6 @@
 """
 Mail Nexus - Intelligent Email Manager
-Design: Editorial Dark - Refined, modern, professional
+Design: Refined Light - Clean, professional, minimal
 """
 import streamlit as st
 import hashlib
@@ -8,6 +8,7 @@ import imaplib
 import ssl
 import email
 import requests
+import json
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from datetime import date, datetime, timedelta
@@ -15,150 +16,203 @@ from datetime import date, datetime, timedelta
 # ========== PAGE CONFIG ==========
 st.set_page_config(
     page_title="Mail Nexus",
-    page_icon="◉",
+    page_icon="✉️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# ========== DESIGN SYSTEM - EDITORIAL DARK ==========
+# ========== SIDEBAR TOGGLE BUTTON ==========
+sidebar_state = st.session_state.get("sidebar_open", False)
+
+# Top bar with menu button
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
-:root {
-    --bg-primary: #0f1419;
-    --bg-secondary: #1a1f2e;
-    --bg-tertiary: #242b3d;
-    --accent-gold: #f4d03f;
-    --accent-cyan: #5dade2;
-    --accent-rose: #e74c3c;
-    --text-primary: #f8f9fa;
-    --text-secondary: #a0aec0;
-    --text-muted: #64748b;
-    --border: #2d3748;
-}
+* { font-family: 'Plus Jakarta Sans', sans-serif !important; }
 
-/* Hide Streamlit chrome */
+/* Hide default Streamlit elements */
 #MainMenu, header, .stDeployButton, [data-testid="stStatusWidget"] {display: none !important;}
 
-/* Global */
-.stApp {
-    background: var(--bg-primary);
-    font-family: 'Source Sans 3', sans-serif;
+/* Clean scrollbar */
+::-webkit-scrollbar {width: 6px; height: 6px;}
+::-webkit-scrollbar-track {background: transparent;}
+::-webkit-scrollbar-thumb {background: #cbd5e1; border-radius: 3px;}
+::-webkit-scrollbar-thumb:hover {background: #94a3b8;}
+
+/* Top navigation bar */
+.top-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid #e2e8f0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    padding: 0 1.5rem;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {width: 6px;}
-::-webkit-scrollbar-track {background: var(--bg-primary);}
-::-webkit-scrollbar-thumb {background: var(--bg-tertiary); border-radius: 3px;}
-::-webkit-scrollbar-thumb:hover {background: var(--accent-gold);}
+.menu-btn {
+    background: none;
+    border: none;
+    font-size: 1.25rem;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
 
-/* Typography */
-h1, h2, h3 {
-    font-family: 'Crimson Text', serif !important;
-    font-weight: 600 !important;
-    color: var(--text-primary) !important;
-    letter-spacing: -0.02em;
+.menu-btn:hover { background: #f1f5f9; }
+
+/* Main content offset for fixed header */
+.main-content {
+    margin-top: 80px;
+    padding: 0 1.5rem;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 /* Buttons */
 .stButton > button {
-    border-radius: 6px !important;
-    font-family: 'Source Sans 3', sans-serif !important;
+    border-radius: 8px !important;
     font-weight: 500 !important;
-    letter-spacing: 0.02em !important;
+    font-size: 0.875rem !important;
     transition: all 0.2s ease !important;
-    text-transform: uppercase !important;
-    font-size: 0.75rem !important;
 }
 
 .stButton > button[kind="primary"] {
-    background: var(--accent-gold) !important;
-    color: var(--bg-primary) !important;
+    background: #0f172a !important;
+    color: white !important;
     border: none !important;
 }
 
 .stButton > button[kind="primary"]:hover {
+    background: #1e293b !important;
     transform: translateY(-1px);
-    box-shadow: 0 4px 20px rgba(244, 208, 63, 0.3) !important;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15) !important;
 }
 
 .stButton > button:not([kind="primary"]) {
-    background: var(--bg-tertiary) !important;
-    color: var(--text-secondary) !important;
-    border: 1px solid var(--border) !important;
+    background: white !important;
+    color: #475569 !important;
+    border: 1px solid #e2e8f0 !important;
 }
 
 .stButton > button:not([kind="primary"]):hover {
-    border-color: var(--accent-gold) !important;
-    color: var(--text-primary) !important;
+    border-color: #cbd5e1 !important;
+    background: #f8fafc !important;
 }
 
 /* Inputs */
 .stTextInput > div > div > input,
 .stSelectbox > div > div > div,
+.stTextArea > div > div > textarea,
 .stDateInput > div > div > input {
-    background: var(--bg-secondary) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 6px !important;
-    color: var(--text-primary) !important;
-    font-family: 'Source Sans 3', sans-serif !important;
+    border-radius: 8px !important;
+    border: 1px solid #e2e8f0 !important;
+    background: white !important;
+    font-size: 0.875rem !important;
 }
 
 .stTextInput > div > div > input:focus,
-.stSelectbox > div > div > div:focus,
-.stDateInput > div > div > input:focus {
-    border-color: var(--accent-gold) !important;
-    box-shadow: 0 0 0 2px rgba(244, 208, 63, 0.1) !important;
+.stSelectbox > div > div > div:focus {
+    border-color: #0f172a !important;
+    box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.08) !important;
 }
 
-/* Expander */
-.streamlit-expander {
-    background: var(--bg-secondary) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
+/* Email card */
+.email-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 0.75rem;
+    transition: all 0.2s ease;
 }
 
-.streamlit-expanderHeader {
-    color: var(--text-secondary) !important;
-    font-size: 0.8rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.1em !important;
+.email-card:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
 
-/* Dividers */
-.stDivider {
-    border-color: var(--border) !important;
+.email-sender {
+    font-weight: 600;
+    color: #0f172a;
+    font-size: 0.95rem;
 }
 
-/* Success/Error/Warning */
-.stSuccess {
-    background: rgba(46, 204, 113, 0.1) !important;
-    border: 1px solid rgba(46, 204, 113, 0.3) !important;
-    color: #2ecc71 !important;
-    border-radius: 6px !important;
+.email-address {
+    color: #64748b;
+    font-size: 0.8rem;
 }
 
-.stError {
-    background: rgba(231, 76, 60, 0.1) !important;
-    border: 1px solid rgba(231, 76, 60, 0.3) !important;
-    color: #e74c3c !important;
-    border-radius: 6px !important;
+.email-subject {
+    color: #334155;
+    font-size: 0.9rem;
+    margin-top: 0.25rem;
 }
 
-.stWarning {
-    background: rgba(244, 208, 63, 0.1) !important;
-    border: 1px solid rgba(244, 208, 63, 0.3) !important;
-    color: var(--accent-gold) !important;
-    border-radius: 6px !important;
+.email-meta {
+    color: #94a3b8;
+    font-size: 0.75rem;
+    margin-top: 0.5rem;
 }
 
-/* Info */
-.stInfo {
-    background: var(--bg-secondary) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-    color: var(--text-secondary) !important;
+/* Expanded content */
+.email-expanded {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-top: 0.75rem;
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.stTabs [data-baseweb="tab"] {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #64748b;
+    border: none;
+    background: transparent;
+}
+
+.stTabs [aria-selected="true"] {
+    color: #0f172a !important;
+    border-bottom: 2px solid #0f172a !important;
+}
+
+/* Status indicators */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-online { background: #dcfce7; color: #166534; }
+.status-offline { background: #fef3c7; color: #92400e; }
+
+/* Section headers */
+.section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    margin-bottom: 0.75rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -171,23 +225,19 @@ try:
 except:
     FIREBASE_OK = False
 
-try:
-    import google.generativeai as genai
-    GENAI_OK = True
-except:
-    GENAI_OK = False
-
 # ========== SESSION STATE ==========
 def init_state():
     defaults = {
+        "sidebar_open": False,
         "expanded_email_id": None,
         "email_translations": {},
         "email_ai_results": {},
-        "email_view_mode": {},  # email_id -> "original" | "translate" | "ai"
-        "selected_ai_model": "gemini-2.5-flash",
+        "email_view_mode": {},
         "offline_emails": [],
-        "offline_config": {"imap": {}, "ai": {"api_key": ""}},
-        "show_config": False
+        "offline_config": {
+            "imap": {"host": "", "username": "", "password": ""},
+            "ai": {"provider": "gemini", "api_key": "", "model": "gemini-2.5-flash", "openrouter_model": "", "base_url": ""}
+        }
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -210,66 +260,64 @@ def get_db():
     except:
         return None
 
-def db_save_config(type_key, data):
+def save_config(section, data):
     db = get_db()
     if db:
         try:
-            db.collection("config").document(type_key).set(data)
+            db.collection("config").document(section).set(data)
             return
         except:
             pass
-    st.session_state.offline_config[type_key] = data
+    st.session_state.offline_config[section].update(data)
 
-def db_get_config(type_key):
+def load_config(section):
     db = get_db()
     if db:
         try:
-            doc = db.collection("config").document(type_key).get()
+            doc = db.collection("config").document(section).get()
             if doc.exists:
                 return doc.to_dict()
         except:
             pass
-    return st.session_state.offline_config.get(type_key, {})
+    return st.session_state.offline_config.get(section, {})
 
-def db_save_email(email_data):
+def save_email(email_data):
     db = get_db()
-    email_id = email_data.get("message_id") or hashlib.md5(
-        (email_data.get("subject", "") + email_data.get("date", "")).encode()
+    eid = email_data.get("message_id") or hashlib.md5(
+        (email_data.get("subject", "") + str(email_data.get("date", ""))).encode()
     ).hexdigest()
     
     if db:
         try:
-            db.collection("emails").document(email_id).set(email_data)
+            db.collection("emails").document(eid).set(email_data)
             return
         except:
             pass
     
-    # Update offline storage
-    existing = [e for e in st.session_state.offline_emails 
-                if (e.get("message_id") or hashlib.md5((e.get("subject", "") + e.get("date", "")).encode()).hexdigest()) != email_id]
+    existing = [e for e in st.session_state.offline_emails
+                if (e.get("message_id") or hashlib.md5((e.get("subject", "") + str(e.get("date", ""))).encode()).hexdigest()) != eid]
     existing.append(email_data)
     st.session_state.offline_emails = existing
 
-def db_get_emails():
+def get_emails():
     db = get_db()
     if db:
         try:
-            docs = db.collection("emails").stream()
-            return [d.to_dict() for d in docs]
+            return [d.to_dict() for d in db.collection("emails").stream()]
         except:
             pass
     return st.session_state.offline_emails
 
-def db_delete_email(email_id):
+def delete_email(eid):
     db = get_db()
     if db:
         try:
-            db.collection("emails").document(email_id).delete()
+            db.collection("emails").document(eid).delete()
         except:
             pass
     st.session_state.offline_emails = [
         e for e in st.session_state.offline_emails
-        if (e.get("message_id") or hashlib.md5((e.get("subject", "") + e.get("date", "")).encode()).hexdigest()) != email_id
+        if (e.get("message_id") or hashlib.md5((e.get("subject", "") + str(e.get("date", ""))).encode()).hexdigest()) != eid
     ]
 
 # ========== IMAP SERVICES ==========
@@ -295,6 +343,24 @@ def decode_mime(s):
     except:
         return s
 
+def parse_sender(from_field):
+    """Parse sender into name and email"""
+    if not from_field:
+        return "Unknown", ""
+    
+    from_field = decode_mime(from_field)
+    
+    if "<" in from_field and ">" in from_field:
+        # Format: "Name <email@domain.com>"
+        name = from_field.split("<")[0].strip().strip('"')
+        email = from_field.split("<")[1].split(">")[0].strip()
+        return name or email, email
+    elif "@" in from_field:
+        # Just email
+        return from_field, from_field
+    else:
+        return from_field, ""
+
 def fetch_emails(host, user, pwd, start, end, status="ALL", port=993):
     emails = []
     try:
@@ -316,13 +382,15 @@ def fetch_emails(host, user, pwd, start, end, status="ALL", port=993):
         
         _, msgs = mail.search(None, " ".join(criteria))
         
-        for eid in reversed(msgs[0].split()):
+        for eid in reversed(msgs[0].split()[:50]):  # Limit 50 emails
             try:
                 _, data = mail.fetch(eid, "(RFC822)")
                 msg = email.message_from_bytes(data[0][1])
                 
                 subject = decode_mime(msg.get("Subject", ""))
-                sender = msg.get("From", "")
+                from_field = msg.get("From", "")
+                sender_name, sender_email = parse_sender(from_field)
+                
                 msg_id = msg.get("Message-ID", "")
                 date_raw = msg.get("Date")
                 
@@ -352,11 +420,12 @@ def fetch_emails(host, user, pwd, start, end, status="ALL", port=993):
                 emails.append({
                     "message_id": msg_id,
                     "subject": subject or "(No Subject)",
-                    "from": sender,
+                    "sender_name": sender_name,
+                    "sender_email": sender_email,
                     "date": msg_date.isoformat() if msg_date else "",
                     "has_attachment": has_attach,
-                    "body": body[:1000],
-                    "preview": body[:200].replace("\n", " ")
+                    "body": body[:2000],
+                    "preview": body[:150].replace("\n", " ").strip()
                 })
             except:
                 continue
@@ -368,35 +437,66 @@ def fetch_emails(host, user, pwd, start, end, status="ALL", port=993):
 
 # ========== AI SERVICES ==========
 def ai_process(text, mode="summarize"):
-    if not GENAI_OK:
-        return "⚠️ AI module not available"
+    cfg = load_config("ai")
+    provider = cfg.get("provider", "gemini")
+    api_key = cfg.get("api_key", "")
     
-    cfg = db_get_config("ai")
-    key = cfg.get("api_key", "")
-    
-    if not key:
+    if not api_key:
         return "⚠️ API key not configured"
     
     try:
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel(st.session_state.selected_ai_model)
-        
-        if mode == "summarize":
-            prompt = f"Summarize this email in Vietnamese, be concise:\n\n{text}\n\nSummary:"
-        elif mode == "translate":
-            prompt = f"Translate to Vietnamese:\n\n{text}\n\nTranslation:"
+        if provider == "openrouter":
+            # OpenRouter API
+            model = cfg.get("openrouter_model", "openai/gpt-3.5-turbo")
+            base_url = cfg.get("base_url", "https://openrouter.ai/api/v1")
+            
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "HTTP-Referer": "https://mail-nexus.streamlit.app",
+                "X-Title": "Mail Nexus"
+            }
+            
+            if mode == "summarize":
+                content = f"Summarize this email in Vietnamese, be concise:\n\n{text[:2000]}"
+            else:
+                content = f"Translate to Vietnamese:\n\n{text[:2000]}"
+            
+            resp = requests.post(
+                f"{base_url}/chat/completions",
+                headers=headers,
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": content}]
+                },
+                timeout=30
+            )
+            return resp.json()["choices"][0]["message"]["content"]
+            
         else:
-            prompt = text
-        
-        resp = model.generate_content(prompt)
-        return resp.text
+            # Gemini
+            try:
+                import google.generativeai as genai
+            except:
+                return "⚠️ google-generativeai not installed"
+            
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(cfg.get("model", "gemini-2.5-flash"))
+            
+            if mode == "summarize":
+                prompt = f"Tóm tắt email sau bằng tiếng Việt, ngắn gọn:\n\n{text[:2000]}\n\nTóm tắt:"
+            else:
+                prompt = f"Dịch sang tiếng Việt:\n\n{text[:2000]}\n\nBản dịch:"
+            
+            resp = model.generate_content(prompt)
+            return resp.text
+            
     except Exception as e:
-        return f"❌ AI Error: {str(e)[:100]}"
+        return f"❌ AI Error: {str(e)[:150]}"
 
 def translate_google(text):
     try:
         url = "https://translate.googleapis.com/translate_a/single"
-        params = {"client": "gtx", "sl": "auto", "tl": "vi", "dt": "t", "q": text}
+        params = {"client": "gtx", "sl": "auto", "tl": "vi", "dt": "t", "q": text[:1000]}
         r = requests.get(url, params=params, timeout=5)
         return "".join([item[0] for item in r.json()[0]])
     except:
@@ -405,250 +505,215 @@ def translate_google(text):
 # ========== UI HELPERS ==========
 def fmt_date(ds):
     try:
-        return datetime.fromisoformat(ds.replace('Z', '+00:00')).strftime("%d/%m %H:%M")
+        dt = datetime.fromisoformat(ds.replace('Z', '+00:00'))
+        return dt.strftime("%d/%m %H:%M")
     except:
         return ds[:16].replace("T", " ") if ds else ""
-
-def get_initials(name):
-    if not name:
-        return "?"
-    parts = name.replace('@', ' ').replace('.', ' ').split()
-    return (parts[0][0] + parts[-1][0]).upper() if len(parts) > 1 else name[0].upper()
-
-def get_color(name):
-    colors = ["#f4d03f", "#5dade2", "#e74c3c", "#9b59b6", "#1abc9c", "#e67e22"]
-    return colors[hash(name) % len(colors)] if name else colors[0]
 
 # ========== SIDEBAR ==========
 def render_sidebar():
     with st.sidebar:
-        # Brand
-        st.markdown("""
-        <div style="padding: 1.5rem 0; border-bottom: 1px solid #2d3748; margin-bottom: 1.5rem;">
-            <div style="font-family: 'Crimson Text', serif; font-size: 1.75rem; font-weight: 700; color: #f8f9fa;">
-                ◉ Mail Nexus
-            </div>
-            <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.15em; margin-top: 0.25rem;">
-                Intelligent Email
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # AI Model Selection
-        st.markdown("<p style='color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;'>AI Model</p>", unsafe_allow_html=True)
-        
-        model = st.selectbox(
-            "",
-            ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash"],
-            index=0,
-            label_visibility="collapsed"
-        )
-        st.session_state.selected_ai_model = model
-        
-        if not GENAI_OK:
-            st.warning("AI module not installed")
+        # Status
+        db = get_db()
+        if db:
+            st.markdown('<div class="status-badge status-online">● Online</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="status-badge status-offline">● Offline Mode</div>', unsafe_allow_html=True)
         
         st.divider()
         
-        # Stats
-        emails = db_get_emails()
-        st.markdown(f"""
-        <div style="background: #1a1f2e; border-radius: 8px; padding: 1rem; border: 1px solid #2d3748;">
-            <div style="color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;">Total Emails</div>
-            <div style="font-family: 'Crimson Text', serif; font-size: 2rem; color: #f4d03f; font-weight: 600;">{len(emails)}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        # IMAP Config
+        st.markdown('<div class="section-title">📧 IMAP Configuration</div>', unsafe_allow_html=True)
+        imap_cfg = load_config("imap")
         
-        # Spacer to push config down
-        st.markdown("<div style='height: 30vh;'></div>", unsafe_allow_html=True)
+        imap_host = st.text_input("Server", value=imap_cfg.get("host", ""), placeholder="imap.gmail.com")
+        imap_user = st.text_input("Email", value=imap_cfg.get("username", ""))
+        imap_pass = st.text_input("Password", value=imap_cfg.get("password", ""), type="password")
         
-        # Configuration Panel (Bottom)
-        with st.expander("⚙️ Configuration", expanded=False):
-            # AI Config
-            st.markdown("<p style='color: #f4d03f; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em;'>🤖 AI Settings</p>", unsafe_allow_html=True)
-            ai_cfg = db_get_config("ai")
-            api_key = st.text_input("Gemini API Key", value=ai_cfg.get("api_key", ""), type="password", label_visibility="collapsed")
-            if st.button("Save AI Config", use_container_width=True):
-                db_save_config("ai", {"api_key": api_key, "model": model})
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("💾 Save", use_container_width=True):
+                save_config("imap", {"host": imap_host, "username": imap_user, "password": imap_pass, "port": 993})
                 st.success("Saved!")
-            
-            st.divider()
-            
-            # IMAP Config
-            st.markdown("<p style='color: #5dade2; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em;'>📧 IMAP Settings</p>", unsafe_allow_html=True)
-            imap_cfg = db_get_config("imap")
-            host = st.text_input("Host", value=imap_cfg.get("host", ""), placeholder="imap.gmail.com")
-            username = st.text_input("Email", value=imap_cfg.get("username", ""))
-            password = st.text_input("Password", value=imap_cfg.get("password", ""), type="password")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Save", use_container_width=True):
-                    db_save_config("imap", {"host": host, "username": username, "password": password, "port": 993})
-                    st.success("Saved!")
-            with col2:
-                if st.button("Test", use_container_width=True):
-                    if all([host, username, password]):
-                        with st.spinner("Testing..."):
-                            ok, msg = test_imap(host, username, password)
-                            st.success("Connected") if ok else st.error(msg[:50])
+        with col2:
+            if st.button("🧪 Test", use_container_width=True):
+                if all([imap_host, imap_user, imap_pass]):
+                    with st.spinner("Testing..."):
+                        ok, msg = test_imap(imap_host, imap_user, imap_pass)
+                        st.success("✓ Connected") if ok else st.error(msg[:50])
+        
+        st.divider()
+        
+        # AI Config
+        st.markdown('<div class="section-title">🤖 AI Configuration</div>', unsafe_allow_html=True)
+        ai_cfg = load_config("ai")
+        
+        provider = st.selectbox(
+            "Provider",
+            ["gemini", "openrouter"],
+            index=0 if ai_cfg.get("provider", "gemini") == "gemini" else 1
+        )
+        
+        api_key = st.text_input("API Key", value=ai_cfg.get("api_key", ""), type="password")
+        
+        if provider == "gemini":
+            model = st.selectbox(
+                "Model",
+                ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash"],
+                index=0
+            )
+            save_config("ai", {"provider": provider, "api_key": api_key, "model": model})
+        else:
+            openrouter_model = st.text_input(
+                "OpenRouter Model",
+                value=ai_cfg.get("openrouter_model", "openai/gpt-3.5-turbo"),
+                placeholder="openai/gpt-3.5-turbo"
+            )
+            base_url = st.text_input(
+                "Base URL",
+                value=ai_cfg.get("base_url", "https://openrouter.ai/api/v1"),
+                placeholder="https://openrouter.ai/api/v1"
+            )
+            if st.button("💾 Save AI Config", use_container_width=True):
+                save_config("ai", {
+                    "provider": provider,
+                    "api_key": api_key,
+                    "openrouter_model": openrouter_model,
+                    "base_url": base_url
+                })
+                st.success("Saved!")
 
-# ========== FETCH SECTION ==========
-def render_fetch():
+# ========== MAIN CONTENT ==========
+# Toggle sidebar button
+col_nav, col_title = st.columns([0.1, 0.9])
+with col_nav:
+    if st.button("☰", key="menu_btn"):
+        st.session_state.sidebar_open = not st.session_state.sidebar_open
+        st.rerun()
+
+with col_title:
     st.markdown("""
-    <div style="margin-bottom: 1.5rem;">
-        <h2 style="margin: 0; font-size: 1.25rem;">Fetch Emails</h2>
-        <p style="color: #64748b; margin: 0.25rem 0 0; font-size: 0.875rem;">Retrieve emails from your IMAP server</p>
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <span style="font-size: 1.5rem;">✉️</span>
+        <div>
+            <div style="font-size: 1.25rem; font-weight: 700; color: #0f172a;">Mail Nexus</div>
+            <div style="font-size: 0.75rem; color: #64748b;">Intelligent Email Manager</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
-    
-    c1, c2, c3, c4 = st.columns([2, 2, 2, 2])
-    
-    with c1:
-        start = st.date_input("From", value=date.today(), label_visibility="collapsed")
-    with c2:
-        end = st.date_input("To", value=date.today(), label_visibility="collapsed")
-    with c3:
-        mail_type = st.selectbox("Type", ["ALL", "UNREAD", "READ"], label_visibility="collapsed")
-    with c4:
-        if st.button("Fetch Emails →", use_container_width=True, type="primary"):
-            cfg = db_get_config("imap")
-            if not all([cfg.get("host"), cfg.get("username"), cfg.get("password")]):
-                st.error("Configure IMAP first ⚙️")
-            else:
-                with st.spinner("Connecting..."):
-                    emails = fetch_emails(
-                        cfg["host"], cfg["username"], cfg["password"],
-                        datetime.combine(start, datetime.min.time()),
-                        datetime.combine(end, datetime.max.time()),
-                        mail_type
-                    )
-                    for e in emails:
-                        db_save_email(e)
-                    st.success(f"Fetched {len(emails)} emails")
 
-# ========== EMAIL LIST ==========
-def render_emails():
-    emails = db_get_emails()
-    
-    if not emails:
-        st.info("📭 No emails yet. Configure IMAP and fetch emails.")
-        return
+# Show sidebar if toggled
+if st.session_state.sidebar_open:
+    render_sidebar()
+
+st.markdown('<div class="main-content">', unsafe_allow_html=True)
+
+# Fetch Section
+st.markdown('<div style="margin: 1.5rem 0;">', unsafe_allow_html=True)
+st.markdown('<div class="section-title">Fetch Emails</div>', unsafe_allow_html=True)
+
+col1, col2, col3, col4 = st.columns([1.5, 1.5, 1.5, 2])
+
+with col1:
+    start_date = st.date_input("From", value=date.today(), label_visibility="collapsed")
+with col2:
+    end_date = st.date_input("To", value=date.today(), label_visibility="collapsed")
+with col3:
+    mail_type = st.selectbox("Type", ["ALL", "UNREAD", "READ"], label_visibility="collapsed")
+with col4:
+    if st.button("🚀 Fetch Emails", use_container_width=True, type="primary"):
+        cfg = load_config("imap")
+        if not all([cfg.get("host"), cfg.get("username"), cfg.get("password")]):
+            st.error("⚠️ Configure IMAP in settings first")
+        else:
+            with st.spinner("Fetching..."):
+                emails = fetch_emails(
+                    cfg["host"], cfg["username"], cfg["password"],
+                    datetime.combine(start_date, datetime.min.time()),
+                    datetime.combine(end_date, datetime.max.time()),
+                    mail_type
+                )
+                for e in emails:
+                    save_email(e)
+                st.success(f"✓ Fetched {len(emails)} emails")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+st.divider()
+
+# Email List
+emails = get_emails()
+
+if not emails:
+    st.info("📭 No emails yet. Configure IMAP settings and fetch emails.")
+else:
+    st.markdown(f'<div class="section-title">Inbox ({len(emails)})</div>', unsafe_allow_html=True)
     
     emails = sorted(emails, key=lambda x: x.get("date", ""), reverse=True)
     
-    st.markdown(f"<h2 style='margin: 1.5rem 0 1rem; font-size: 1.25rem;'>Inbox ({len(emails)})</h2>", unsafe_allow_html=True)
-    
     for mail in emails:
-        email_id = mail.get("message_id") or hashlib.md5(
-            (mail.get("subject", "") + mail.get("date", "")).encode()
+        eid = mail.get("message_id") or hashlib.md5(
+            (mail.get("subject", "") + str(mail.get("date", ""))).encode()
         ).hexdigest()
         
-        is_expanded = st.session_state.expanded_email_id == email_id
+        is_expanded = st.session_state.expanded_email_id == eid
         
-        # Email Card Header
-        cols = st.columns([0.6, 5, 1.2])
-        
-        with cols[0]:
-            sender = mail.get("from", "Unknown")
-            color = get_color(sender)
-            initials = get_initials(sender)
-            st.markdown(f"""
-            <div style="width: 44px; height: 44px; border-radius: 50%; background: {color}; 
-                        display: flex; align-items: center; justify-content: center;
-                        color: #0f1419; font-weight: 700; font-size: 0.9rem; font-family: 'Source Sans 3', sans-serif;">
-                {initials}
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with cols[1]:
-            subject = mail.get("subject", "(No Subject)")
-            date_str = fmt_date(mail.get("date", ""))
-            attach_icon = " 📎" if mail.get("has_attachment") else ""
+        # Email Card
+        with st.container():
+            cols = st.columns([4, 1.5, 1])
             
-            st.markdown(f"<div style='font-weight: 600; color: #f8f9fa; font-size: 0.95rem;'>{subject}{attach_icon}</div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='color: #64748b; font-size: 0.8rem;'>{sender} • {date_str}</div>", unsafe_allow_html=True)
-        
-        with cols[2]:
-            btn_text = "Close" if is_expanded else "Open"
-            if st.button(btn_text, key=f"toggle_{email_id}", use_container_width=True):
-                st.session_state.expanded_email_id = None if is_expanded else email_id
-                st.rerun()
-        
-        # Expanded Content
-        if is_expanded:
-            with st.container():
-                st.markdown("<div style='margin: 0.75rem 0 1.5rem; padding: 1.25rem; background: #1a1f2e; border-radius: 8px; border: 1px solid #2d3748;'>", unsafe_allow_html=True)
+            with cols[0]:
+                sender_name = mail.get("sender_name", "Unknown")
+                sender_email = mail.get("sender_email", "")
+                subject = mail.get("subject", "(No Subject)")
+                preview = mail.get("preview", "")
+                date_str = fmt_date(mail.get("date", ""))
+                attach = " 📎" if mail.get("has_attachment") else ""
                 
-                # Mode Toggle Buttons
-                current_mode = st.session_state.email_view_mode.get(email_id, "original")
+                st.markdown(f"""
+                <div class="email-card">
+                    <div class="email-sender">{sender_name}{attach}</div>
+                    <div class="email-address">{sender_email}</div>
+                    <div class="email-subject">{subject}</div>
+                    <div class="email-meta">{date_str} • {preview[:80]}{"..." if len(preview) > 80 else ""}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with cols[1]:
+                btn_label = "Close" if is_expanded else "Read"
+                if st.button(btn_label, key=f"read_{eid}", use_container_width=True):
+                    st.session_state.expanded_email_id = None if is_expanded else eid
+                    st.rerun()
+            
+            with cols[2]:
+                if st.button("🗑️", key=f"del_{eid}"):
+                    delete_email(eid)
+                    st.success("Deleted")
+                    st.rerun()
+            
+            # Expanded View
+            if is_expanded:
+                current_mode = st.session_state.email_view_mode.get(eid, "original")
                 
-                btn_cols = st.columns([1, 1, 1, 2])
+                tab_orig, tab_trans, tab_ai = st.tabs(["📄 Original", "🌐 Translate", "🤖 AI"])
                 
-                with btn_cols[0]:
-                    if st.button("📄 Original", key=f"orig_{email_id}", 
-                               type="primary" if current_mode == "original" else "secondary",
-                               use_container_width=True):
-                        st.session_state.email_view_mode[email_id] = "original"
-                        st.rerun()
+                with tab_orig:
+                    st.text_area("Content", value=mail.get("body", ""), height=250, disabled=True, label_visibility="collapsed")
                 
-                with btn_cols[1]:
-                    if st.button("🌐 Translate", key=f"trans_{email_id}",
-                               type="primary" if current_mode == "translate" else "secondary",
-                               use_container_width=True):
-                        st.session_state.email_view_mode[email_id] = "translate"
-                        if email_id not in st.session_state.email_translations:
-                            with st.spinner("Translating..."):
-                                st.session_state.email_translations[email_id] = translate_google(mail.get("body", ""))
-                        st.rerun()
+                with tab_trans:
+                    if st.button("Translate to Vietnamese", key=f"btn_trans_{eid}"):
+                        with st.spinner("Translating..."):
+                            st.session_state.email_translations[eid] = translate_google(mail.get("body", ""))
+                    
+                    translated = st.session_state.email_translations.get(eid, "Click Translate to see Vietnamese version")
+                    st.text_area("Translation", value=translated, height=250, disabled=True, label_visibility="collapsed")
                 
-                with btn_cols[2]:
-                    if st.button("🤖 AI Summary", key=f"ai_{email_id}",
-                               type="primary" if current_mode == "ai" else "secondary",
-                               use_container_width=True):
-                        st.session_state.email_view_mode[email_id] = "ai"
-                        if email_id not in st.session_state.email_ai_results:
-                            with st.spinner("AI analyzing..."):
-                                st.session_state.email_ai_results[email_id] = ai_process(mail.get("body", ""), "summarize")
-                        st.rerun()
-                
-                with btn_cols[3]:
-                    if st.button("🗑️ Delete", key=f"del_{email_id}", use_container_width=True):
-                        db_delete_email(email_id)
-                        st.success("Deleted")
-                        st.rerun()
-                
-                st.divider()
-                
-                # Content Display
-                if current_mode == "original":
-                    st.markdown("<p style='color: #64748b; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;'>Original Content</p>", unsafe_allow_html=True)
-                    st.text_area("", value=mail.get("body", ""), height=200, disabled=True, label_visibility="collapsed")
-                
-                elif current_mode == "translate":
-                    st.markdown("<p style='color: #5dade2; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;'>🌐 Vietnamese Translation</p>", unsafe_allow_html=True)
-                    translated = st.session_state.email_translations.get(email_id, "Translating...")
-                    st.text_area("", value=translated, height=200, disabled=True, label_visibility="collapsed")
-                
-                elif current_mode == "ai":
-                    st.markdown("<p style='color: #f4d03f; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;'>🤖 AI Summary</p>", unsafe_allow_html=True)
-                    ai_result = st.session_state.email_ai_results.get(email_id, "Analyzing...")
+                with tab_ai:
+                    if st.button("Generate AI Summary", key=f"btn_ai_{eid}"):
+                        with st.spinner("AI analyzing..."):
+                            st.session_state.email_ai_results[eid] = ai_process(mail.get("body", ""), "summarize")
+                    
+                    ai_result = st.session_state.email_ai_results.get(eid, "Click Generate to see AI summary")
                     st.info(ai_result)
-                
-                st.markdown("</div>", unsafe_allow_html=True)
-        
-        st.divider()
 
-# ========== MAIN ==========
-render_sidebar()
-
-st.markdown("""
-<div style="padding: 0.5rem 0 1.5rem;">
-    <h1 style="margin: 0; font-size: 2rem;">Inbox Intelligence</h1>
-    <p style="color: #64748b; margin: 0.25rem 0 0;">AI-powered email management</p>
-</div>
-""", unsafe_allow_html=True)
-
-render_fetch()
-st.divider()
-render_emails()
+st.markdown('</div>', unsafe_allow_html=True)
