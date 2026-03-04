@@ -546,22 +546,27 @@ else:
             st.caption(date_full)
             st.divider()
             
-            # Content tabs
+            # Nội dung email - hiển thị luôn không cần tab
             body = mail.get("body", "")
-            tab1, tab2, tab3 = st.tabs(["📄 Nội dung", "🌐 Dịch", "🤖 AI"])
             
-            with tab1:
-                st.markdown(f'<div style="color: #334155; line-height: 1.8;">{body.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+            st.markdown("##### 📄 Nội dung gốc")
+            st.markdown(f'<div style="color: #334155; line-height: 1.8; background: #f8fafc; padding: 1rem; border-radius: 8px;">{body.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
             
-            with tab2:
-                if st.button("🌐 Dịch sang tiếng Việt", key=f"tr_{eid}"):
-                    with st.spinner("Đang dịch..."):
-                        st.session_state.translations[eid] = translate(body)
-                result = st.session_state.translations.get(eid, "Nhấn nút để dịch email")
-                st.markdown(f'<div style="color: #334155; line-height: 1.8;">{result.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+            st.divider()
             
-            with tab3:
-                if st.button("🤖 Tóm tắt AI", key=f"ai_{eid}"):
-                    with st.spinner("AI đang phân tích..."):
-                        st.session_state.ai_results[eid] = ai_process(body)
-                st.info(st.session_state.ai_results.get(eid, "Nhấn nút để AI tóm tắt"))
+            # Dịch
+            st.markdown("##### 🌐 Bản dịch tiếng Việt")
+            if st.button("🌐 Dịch email này", key=f"tr_{eid}"):
+                with st.spinner("Đang dịch..."):
+                    st.session_state.translations[eid] = translate(body)
+            result = st.session_state.translations.get(eid, "Nhấn nút để dịch email sang tiếng Việt")
+            st.markdown(f'<div style="color: #334155; line-height: 1.8; background: #f0fdf4; padding: 1rem; border-radius: 8px;">{result.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+            
+            st.divider()
+            
+            # AI
+            st.markdown("##### 🤖 Tóm tắt AI")
+            if st.button("🤖 Phân tích bằng AI", key=f"ai_{eid}"):
+                with st.spinner("AI đang phân tích..."):
+                    st.session_state.ai_results[eid] = ai_process(body)
+            st.info(st.session_state.ai_results.get(eid, "Nhấn nút để AI tóm tắt email này"))
