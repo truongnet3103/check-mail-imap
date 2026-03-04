@@ -221,17 +221,20 @@ section[data-testid="stSidebar"] .stExpander header {
 /* Mobile burger */
 .mobile-burger {
     display: none;
+}
+.mobile-burger > button {
     position: fixed;
     top: 10px;
     left: 10px;
     z-index: 9999;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 0.5rem;
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+    padding: 0.5rem 0.75rem !important;
     box-shadow: var(--shadow-md);
-    cursor: pointer;
     font-size: 1.2rem;
+    min-width: unset !important;
+    height: auto !important;
 }
 @media (max-width: 768px) {
     .mobile-burger { display: block; }
@@ -247,11 +250,6 @@ section[data-testid="stSidebar"] .stExpander header {
     }
     section[data-testid="stSidebar"].open {
         transform: translateX(0);
-    }
-}
-@media (min-width: 769px) {
-    button[data-testid="baseButton-secondary"]:has-text("☰") {
-        display: none !important;
     }
 }
 </style>
@@ -611,10 +609,6 @@ def translate_text_google(text):
 # ========== SIDEBAR ==========
 def render_sidebar():
     with st.sidebar:
-        # Mobile burger toggle button
-        if st.button("☰", key="burger_btn", help="Mở menu", type="secondary"):
-            st.session_state.burger_open = not st.session_state.burger_open
-
         # Status indicator
         db = get_firebase_db_cached()
         if db:
@@ -1006,6 +1000,21 @@ def render_email_list():
 
 # ========== MAIN ==========
 def main():
+    # Mobile burger button
+    if st.button("☰", key="burger_btn_main", help="Mở menu", type="secondary"):
+        st.session_state.burger_open = not st.session_state.burger_open
+
+    # Apply open class to sidebar if needed (via JS injection for mobile overlay)
+    if st.session_state.burger_open:
+        st.markdown("""
+        <script>
+        const sidebar = document.querySelector('section[data-testid="stSidebar"]');
+        if (sidebar && window.innerWidth <= 768) {
+            sidebar.classList.add('open');
+        }
+        </script>
+        """, unsafe_allow_html=True)
+
     render_sidebar()
 
     # Header
