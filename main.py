@@ -551,7 +551,8 @@ def fetch_emails_by_date(host, username, password, start_date, end_date, read_st
                     "from": sender,
                     "date": email_date.isoformat() if email_date else "",
                     "has_attachment": has_attachment,
-                    "snippet": body[:500]
+                    "body": body,  # Full content
+                    "snippet": body[:500]  # Preview
                 }
 
                 # Apply filters
@@ -949,12 +950,23 @@ def render_email_card(mail):
             # Content display
             st.markdown('<div class="fade-in">', unsafe_allow_html=True)
             if current_mode == "original":
-                st.text_area("", value=mail.get("snippet", ""), height=180, disabled=True, label_visibility="collapsed")
-            elif current_mode == "translate":
-                content = st.session_state.translations.get(mail_id, "Đang dịch...")
+                content = mail.get("body") or mail.get("snippet", "")
                 st.text_area("", value=content, height=180, disabled=True, label_visibility="collapsed")
+            elif current_mode == "translate":
+                # Translate uses snippet (shorter) to save tokens, or body if needed
+                content_to_translate = mail.get("snippet") or mail.get("body", "")
+                cache_key = mail_id + "_trans_full"
+                if cache_key not in st.session_state.translations:
+                    with st.spinner("🌐 Đang dịch..."):
+                        st.session_state.translations[cache_key] = translate_text_google(content_to_translate)
+                st.text_area("", value=st.session_state.translations[cache_key], height=180, disabled=True, label_visibility="collapsed")
             elif current_mode == "ai":
-                st.info(st.session_state.ai_summaries.get(mail_id, "Đang phân tích..."), icon="🤖")
+                # AI summarization uses snippet (shorter context)
+                cache_key = mail_id + "_ai_full"
+                if cache_key not in st.session_state.ai_summaries:
+                    with st.spinner("🤖 AI đang phân tích..."):
+                        st.session_state.ai_summaries[cache_key] = get_gemini_response(mail.get("snippet", ""), "summarize")
+                st.info(st.session_state.ai_summaries[cache_key], icon="🤖")
             st.markdown('</div>', unsafe_allow_html=True)
 
             # Delete button
