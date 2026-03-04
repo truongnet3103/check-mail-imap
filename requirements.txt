@@ -1,0 +1,7 @@
+streamlit
+firebase-admin
+google-cloud-firestore
+google-generativeai
+python-dotenv
+streamlit-aggrid
+deep-translator
