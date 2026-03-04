@@ -1,6 +1,5 @@
 """
-Mail Nexus - Trình Quản Lý Email Thông Minh
-Design: Gemini-style expander cards
+Mail Nexus - Trình Quản Lý Email
 """
 import streamlit as st
 import hashlib
@@ -12,125 +11,478 @@ from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from datetime import date, datetime, timedelta
 
-# ========== PAGE CONFIG ==========
-st.set_page_config(
-    page_title="Mail Nexus",
-    page_icon="✉️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Mail Nexus", page_icon="✉️", layout="wide")
 
-# ========== CSS ==========
+# CSS
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&display=swap');
 * { font-family: 'Be Vietnam Pro', sans-serif !important; }
-#MainMenu, header, .stDeployButton, [data-testid="stStatusWidget"] {display: none !important;}
+#MainMenu, header, .stDeployButton {display: none !important;}
 
-/* Expander giống Gemini */
-.streamlit-expander {
-    border: 1px solid #e2e8f0 !important;
-    border-radius: 12px !important;
-    margin-bottom: 0.75rem !important;
-    overflow: hidden !important;
-    background: white !important;
+.email-container {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
 }
 
-.streamlit-expanderHeader {
-    background: white !important;
-    padding: 1rem 1.25rem !important;
-    font-size: 0.9rem !important;
-    border-bottom: none !important;
-}
-
-.streamlit-expanderHeader:hover {
-    background: #f8fafc !important;
-}
-
-/* Content bên trong */
-.streamlit-expanderContent {
-    background: #f8fafc !important;
-    padding: 1.25rem !important;
-    border-top: 1px solid #e2e8f0 !important;
-}
-
-.stButton > button {
-    border-radius: 6px !important;
-    font-weight: 500 !important;
-}
-.stButton > button[kind="primary"] {
-    background: #0f172a !important;
-    color: white !important;
-    border: none !important;
-}
-
-/* Nút xóa màu đỏ */
-.delete-btn > button {
-    color: #ef4444 !important;
-    border: 1px solid #ef4444 !important;
-    background: white !important;
-    font-size: 0.75rem !important;
-    padding: 4px 12px !important;
-}
-.delete-btn > button:hover {
-    background: #ef4444 !important;
-    color: white !important;
-}
-
-.stTabs [data-baseweb="tab-list"] {
-    border-bottom: 1px solid #e2e8f0;
-}
-.stTabs [data-baseweb="tab"] {
-    padding: 0.75rem 1rem;
-    font-size: 0.875rem;
-    color: #64748b;
-}
-.stTabs [aria-selected="true"] {
-    color: #0f172a !important;
-    border-bottom: 2px solid #0f172a !important;
-}
-
-/* Header row styling */
-.email-header-row {
+.email-header {
     display: grid;
-    grid-template-columns: 100px 1fr 60px 100px 60px;
-    gap: 0.75rem;
+    grid-template-columns: 140px 1fr 50px 120px 60px;
+    gap: 12px;
+    padding: 12px 16px;
+    background: white;
+    cursor: pointer;
     align-items: center;
 }
 
-.email-sender-compact {
-    font-weight: 600;
-    color: #0f172a;
-    font-size: 0.9rem;
-    line-height: 1.3;
+.email-header:hover {
+    background: #f8fafc;
 }
 
-.email-subject-compact {
-    color: #475569;
-    font-size: 0.9rem;
+.email-sender {
+    font-weight: 600;
+    color: #0f172a;
+    font-size: 14px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.email-date-compact {
-    color: #94a3b8;
-    font-size: 0.8rem;
-    text-align: right;
+.email-subject {
+    color: #475569;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.email-attach-icon {
+.email-attach {
     text-align: center;
     color: #94a3b8;
 }
 
+.email-date {
+    color: #64748b;
+    font-size: 13px;
+    text-align: right;
+}
+
+.email-content {
+    padding: 20px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+}
+
+.email-meta {
+    color: #64748b;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+.email-body {
+    color: #334155;
+    line-height: 1.7;
+    white-space: pre-wrap;
+}
+
+.delete-btn {
+    background: #fee2e2 !important;
+    color: #dc2626 !important;
+    border: 1px solid #fecaca !important;
+    padding: 4px 12px !important;
+    font-size: 12px !important;
+}
+
+.delete-btn:hover {
+    background: #dc2626 !important;
+    color: white !important;
+}
+
 @media (max-width: 768px) {
-    .email-header-row {
-        grid-template-columns: 80px 1fr 60px;
+    .email-header {
+        grid-template-columns: 1fr 60px;
     }
-    .email-attach-icon, .email-date-compact {
-        display: none;
-    }
+    .email-sender { grid-column: 1; }
+    .email-subject { display: none; }
+    .email-attach { display: none; }
+    .email-date { display: none; }
+}
+
+.section-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #94a3b8;
+    letter-spacing: 0.05em;
+    padding: 8px 16px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.table-header {
+    display: grid;
+    grid-template-columns: 140px 1fr 50px 120px 60px;
+    gap: 12px;
+    padding: 10px 16px;
+    background: #f8fafc;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+@media (max-width: 768px) {
+    .table-header { display: none; }
+}
+
+.stButton > button[kind="primary"] {
+    background: #0f172a !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 6px !important;
+}
+
+.sidebar-content {
+    padding: 1rem;
+}
+
+.config-section {
+    margin-bottom: 1.5rem;
+}
+
+.config-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+
+.stTextInput > div > div > input {
+    border-radius: 6px !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+.stSelectbox > div > div > div {
+    border-radius: 6px !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+.ai-summary {
+    background: #eff6ff;
+    border: 1px solid #dbeafe;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.translation {
+    background: #f0fdf4;
+    border: 1px solid #dcfce7;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.section-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 8px;
+}
+
+.action-btn {
+    font-size: 12px !important;
+    padding: 6px 16px !important;
+}
+
+.action-btn-primary {
+    background: #0f172a !important;
+    color: white !important;
+    border: none !important;
+}
+
+.action-btn-secondary {
+    background: white !important;
+    color: #475569 !important;
+    border: 1px solid #e2e8f0 !important;
+}
+
+.action-btn-danger {
+    background: #fee2e2 !important;
+    color: #dc2626 !important;
+    border: 1px solid #fecaca !important;
+}
+
+.action-btn-danger:hover {
+    background: #dc2626 !important;
+    color: white !important;
+}
+
+.email-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #94a3b8;
+}
+
+.empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.badge-success {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.badge-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.page-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+}
+
+.page-subtitle {
+    color: #64748b;
+    font-size: 14px;
+    margin-top: 4px;
+}
+
+.email-count {
+    font-size: 14px;
+    color: #64748b;
+}
+
+.fetch-row {
+    display: flex;
+    gap: 12px;
+    align-items: end;
+    margin-bottom: 20px;
+}
+
+.fetch-row > div {
+    flex: 1;
+}
+
+.fetch-row > div:last-child {
+    flex: 0 0 180px;
+}
+
+.fetch-btn {
+    width: 100%;
+}
+
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.status-online {
+    background: #22c55e;
+}
+
+.status-offline {
+    background: #f59e0b;
+}
+
+.sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 16px;
+}
+
+.sidebar-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0;
+}
+
+.input-group {
+    margin-bottom: 12px;
+}
+
+.input-label {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.btn-group {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-group > div {
+    flex: 1;
+}
+
+.divider {
+    height: 1px;
+    background: #e2e8f0;
+    margin: 16px 0;
+}
+
+.checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.confirm-text {
+    font-size: 13px;
+    color: #dc2626;
+}
+
+.delete-all-section {
+    margin-top: 8px;
+}
+
+.spacer {
+    height: 20px;
+}
+
+.from-to-row {
+    margin-bottom: 12px;
+}
+
+.from-to-label {
+    color: #64748b;
+    font-size: 13px;
+}
+
+.from-to-value {
+    color: #0f172a;
+    font-weight: 500;
+}
+
+.date-full {
+    color: #94a3b8;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+.content-box {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 12px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.section-title-inline {
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+}
+
+.empty-content {
+    color: #94a3b8;
+    font-style: italic;
+}
+
+.text-content {
+    color: #334155;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    font-size: 14px;
+}
+
+.inline-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.inline-actions button {
+    font-size: 11px !important;
+    padding: 4px 12px !important;
+}
+
+.original-content {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 8px;
+}
+
+.translated-content {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 8px;
+}
+
+.ai-content {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 8px;
+}
+
+.content-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #64748b;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+}
+
+.expanded-section {
+    margin-bottom: 20px;
+}
+
+.expanded-section:last-child {
+    margin-bottom: 0;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -146,6 +498,8 @@ except:
 # ========== STATE ==========
 def init():
     defaults = {
+        "sidebar_visible": True,
+        "expanded_email": None,
         "translations": {},
         "ai_results": {},
         "offline_emails": [],
@@ -502,71 +856,74 @@ else:
             st.session_state.confirm_delete = False
             st.rerun()
     
+    # Table header
+    st.markdown("""
+    <div class="table-header">
+        <div>Ngườ gửi</div>
+        <div>Tiêu đề</div>
+        <div style="text-align: center;">📎</div>
+        <div>Ngày giờ</div>
+        <div style="text-align: right;">Xóa</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     # Sort
     try:
         emails = sorted(emails, key=lambda x: x.get("date", "") or "", reverse=True)
     except:
         pass
     
-    # Emails as expanders
+    # Email rows as expanders
     for mail in emails:
         eid = get_eid(mail)
+        is_exp = st.session_state.expanded_email == eid
         
-        sender_name = mail.get("sender_name") or parse_sender(mail.get("from", ""))[0]
+        sender = mail.get("sender_name") or parse_sender(mail.get("from", ""))[0]
         subject = mail.get("subject", "(Không có tiêu đề)")
         attach = "📎" if mail.get("has_attachment") else ""
         date_str = fmt_date(mail.get("date", ""))
         date_full = fmt_date_full(mail.get("date", ""))
         
-        # Tạo label cho expander: Ngườ gửi | Tiêu đề | 📎 | Ngày | [Xóa]
-        with st.expander(f"{sender_name} | {subject}"):
-            # Header row trong expander
-            col_info, col_date, col_del = st.columns([4, 2, 1])
-            
-            with col_info:
-                st.markdown(f"**{sender_name}**")
-                st.caption(subject[:50] + "..." if len(subject) > 50 else subject)
-            
-            with col_date:
-                st.markdown(f"📎 {attach}" if attach else "")
-                st.caption(date_str)
-            
+        # Expander label
+        with st.expander(f"{sender} | {subject} | {attach} | {date_str}", expanded=is_exp):
+            # Delete button
+            col_info, col_del = st.columns([6, 1])
             with col_del:
-                if st.button("Xóa", key=f"del_{eid}"):
+                if st.button("🗑️ Xóa", key=f"del_{eid}"):
                     delete_email(eid)
                     st.success("Đã xóa!")
                     st.rerun()
             
-            st.divider()
-            
-            # Email details
+            # Email info
             sender_email = mail.get("sender_email", "")
-            st.markdown(f"**Từ:** {sender_name} <{sender_email}>" if sender_email else f"**Từ:** {sender_name}")
+            st.markdown(f"**Từ:** {sender} <{sender_email}>" if sender_email else f"**Từ:** {sender}")
             st.markdown(f"**Đến:** Tôi")
             st.caption(date_full)
             st.divider()
             
-            # Nội dung email - hiển thị luôn không cần tab
+            # Content sections (no tabs)
             body = mail.get("body", "")
             
-            st.markdown("##### 📄 Nội dung gốc")
-            st.markdown(f'<div style="color: #334155; line-height: 1.8; background: #f8fafc; padding: 1rem; border-radius: 8px;">{body.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+            # Original
+            st.markdown("**📄 Nội dung gốc**")
+            st.markdown(f'<div class="original-content">{body.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
             
-            st.divider()
+            st.markdown("---")
             
-            # Dịch
-            st.markdown("##### 🌐 Bản dịch tiếng Việt")
-            if st.button("🌐 Dịch email này", key=f"tr_{eid}"):
+            # Translation
+            st.markdown("**🌐 Bản dịch**")
+            if st.button("🌐 Dịch sang tiếng Việt", key=f"tr_{eid}"):
                 with st.spinner("Đang dịch..."):
                     st.session_state.translations[eid] = translate(body)
-            result = st.session_state.translations.get(eid, "Nhấn nút để dịch email sang tiếng Việt")
-            st.markdown(f'<div style="color: #334155; line-height: 1.8; background: #f0fdf4; padding: 1rem; border-radius: 8px;">{result.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+            result = st.session_state.translations.get(eid, "Nhấn nút để dịch email")
+            st.markdown(f'<div class="translated-content">{result.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
             
-            st.divider()
+            st.markdown("---")
             
             # AI
-            st.markdown("##### 🤖 Tóm tắt AI")
+            st.markdown("**🤖 Tóm tắt AI**")
             if st.button("🤖 Phân tích bằng AI", key=f"ai_{eid}"):
                 with st.spinner("AI đang phân tích..."):
                     st.session_state.ai_results[eid] = ai_process(body)
-            st.info(st.session_state.ai_results.get(eid, "Nhấn nút để AI tóm tắt email này"))
+            ai_result = st.session_state.ai_results.get(eid, "Nhấn nút để AI tóm tắt")
+            st.markdown(f'<div class="ai-content">{ai_result}</div>', unsafe_allow_html=True)
