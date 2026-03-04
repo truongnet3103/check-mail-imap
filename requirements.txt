@@ -1,7 +1,5 @@
-streamlit
-firebase-admin
-google-cloud-firestore
-google-generativeai
-python-dotenv
-streamlit-aggrid
-deep-translator
+streamlit>=1.28.0
+firebase-admin>=6.2.0
+google-generativeai>=0.3.0
+python-dotenv>=1.0.0
+requests>=2.31.0
