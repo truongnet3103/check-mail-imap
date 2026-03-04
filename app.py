@@ -22,12 +22,7 @@ st.set_page_config(
     page_title="Mail Nexus",
     page_icon="✉️",
     layout="wide",
-    initial_sidebar_state="expanded",
-    menu_items={
-        'Get Help': None,
-        'Report a bug': None,
-        'About': None
-    }
+    initial_sidebar_state="expanded"
 )
 
 # ============================================================================
@@ -127,75 +122,96 @@ def init_session_state():
 init_session_state()
 
 # ============================================================================
-# FIREBASE SERVICES
+# FIREBASE SERVICES - with graceful error handling
 # ============================================================================
 @st.cache_resource
 def get_firebase_db():
     """Initialize Firebase and return Firestore client"""
     try:
         if not firebase_admin._apps:
-            # For local development - use secrets
-            if hasattr(st, "secrets") and "firebase" in st.secrets:
-                cred = credentials.Certificate(dict(st.secrets["firebase"]))
-            else:
-                # Fallback - will fail gracefully
+            # Check if secrets exist
+            if not hasattr(st, "secrets") or "firebase" not in st.secrets:
                 return None
+            cred = credentials.Certificate(dict(st.secrets["firebase"]))
             firebase_admin.initialize_app(cred)
         return firestore.client()
     except Exception as e:
-        st.error(f"Firebase init error: {e}")
         return None
 
 def save_ai_config(data):
     db = get_firebase_db()
     if db:
-        db.collection("config").document("ai").set(data)
+        try:
+            db.collection("config").document("ai").set(data)
+        except:
+            pass
 
 def get_ai_config():
     db = get_firebase_db()
     if db:
-        doc = db.collection("config").document("ai").get()
-        return doc.to_dict() if doc.exists else {}
+        try:
+            doc = db.collection("config").document("ai").get()
+            return doc.to_dict() if doc.exists else {}
+        except:
+            return {}
     return {}
 
 def save_imap_config(data):
     db = get_firebase_db()
     if db:
-        db.collection("config").document("imap").set(data)
+        try:
+            db.collection("config").document("imap").set(data)
+        except:
+            pass
 
 def get_imap_config():
     db = get_firebase_db()
     if db:
-        doc = db.collection("config").document("imap").get()
-        return doc.to_dict() if doc.exists else {}
+        try:
+            doc = db.collection("config").document("imap").get()
+            return doc.to_dict() if doc.exists else {}
+        except:
+            return {}
     return {}
 
 def save_email(email_data: dict):
     db = get_firebase_db()
     if not db:
         return
-    raw_id = email_data.get("message_id") or (email_data.get("subject", "") + email_data.get("date", ""))
-    doc_id = hashlib.md5(raw_id.encode()).hexdigest()
-    db.collection("emails").document(doc_id).set(email_data)
+    try:
+        raw_id = email_data.get("message_id") or (email_data.get("subject", "") + email_data.get("date", ""))
+        doc_id = hashlib.md5(raw_id.encode()).hexdigest()
+        db.collection("emails").document(doc_id).set(email_data)
+    except:
+        pass
 
 def get_all_emails():
     db = get_firebase_db()
     if db:
-        docs = db.collection("emails").stream()
-        return [doc.to_dict() for doc in docs]
+        try:
+            docs = db.collection("emails").stream()
+            return [doc.to_dict() for doc in docs]
+        except:
+            return []
     return []
 
 def reset_emails():
     db = get_firebase_db()
     if db:
-        docs = db.collection("emails").stream()
-        for doc in docs:
-            doc.reference.delete()
+        try:
+            docs = db.collection("emails").stream()
+            for doc in docs:
+                doc.reference.delete()
+        except:
+            pass
 
 def delete_email(message_id):
     db = get_firebase_db()
     if db:
-        db.collection("emails").document(message_id).delete()
+        try:
+            db.collection("emails").document(message_id).delete()
+        except:
+            pass
 
 # ============================================================================
 # IMAP SERVICES
@@ -634,6 +650,11 @@ def render_email_list():
 # ============================================================================
 def main():
     render_sidebar()
+    
+    # Check Firebase config
+    db = get_firebase_db()
+    if not db:
+        st.warning("⚠️ **Chưa cấu hình Firebase!** Vui lòng vào Settings → Secrets và thêm Firebase credentials để lưu trữ email.")
     
     # Header
     st.markdown("""
