@@ -341,6 +341,16 @@ def get_all_emails_cached():
             pass
     return st.session_state.offline_emails
 
+@st.cache_data(ttl=60)
+def get_distinct_senders():
+    emails = get_all_emails_cached()
+    senders = set()
+    for e in emails:
+        sender = e.get("from", "")
+        if sender:
+            senders.add(sender)
+    return sorted(list(senders))
+
 def delete_email(message_id):
     db = get_firebase_db_cached()
     if db:
@@ -368,7 +378,7 @@ def test_imap_connection(host, username, password, port=993):
         return False, str(e)
 
 @st.cache_data(ttl=300)
-def fetch_emails_by_date(host, username, password, start_date, end_date, read_status="ALL", port=993):
+def fetch_emails_by_date(host, username, password, start_date, end_date, read_status="ALL", port=993, sender_filters=None, subject_contains=None):
     emails = []
     try:
         context = ssl.create_default_context()
@@ -403,7 +413,7 @@ def fetch_emails_by_date(host, username, password, start_date, end_date, read_st
                 sender = msg.get("From", "")
                 message_id = msg.get("Message-ID", "")
                 date_raw = msg.get("Date")
-
+                
                 try:
                     email_date = parsedate_to_datetime(date_raw) if date_raw else None
                 except:
@@ -429,14 +439,24 @@ def fetch_emails_by_date(host, username, password, start_date, end_date, read_st
                     if payload:
                         body = payload.decode(errors="ignore")
 
-                emails.append({
+                email_data = {
                     "message_id": message_id,
                     "subject": subject or "(Không tiêu đề)",
                     "from": sender,
                     "date": email_date.isoformat() if email_date else "",
                     "has_attachment": has_attachment,
                     "snippet": body[:500]
-                })
+                }
+
+                # Apply filters
+                if sender_filters:
+                    if not any(sf.lower() in sender.lower() for sf in sender_filters):
+                        continue
+                if subject_contains:
+                    if subject_contains.lower() not in subject.lower():
+                        continue
+
+                emails.append(email_data)
             except:
                 continue
 
@@ -524,10 +544,15 @@ def render_sidebar():
 
         # Stats
         emails = get_all_emails_cached()
+        senders = get_distinct_senders()
         st.markdown(f"""
         <div style="padding: 0.5rem 0;">
             <div style="font-size: 0.875rem; color: var(--text-secondary);">Total Emails</div>
             <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-primary);">{len(emails)}</div>
+        </div>
+        <div style="padding: 0.5rem 0;">
+            <div style="font-size: 0.875rem; color: var(--text-secondary);">Senders</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-secondary);">{len(senders)}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -608,22 +633,40 @@ def render_fetch_section():
     st.caption("Lấy email từ IMAP server trong khoảng thời gian chỉ định")
 
     with st.form("fetch_form", clear_on_submit=False):
-        col1, col2, col3, col4 = st.columns([2, 2, 2, 1.5])
-
+        col1, col2, col3 = st.columns(3)
         with col1:
             start_date = st.date_input("Từ ngày", value=date.today(), label_visibility="collapsed")
         with col2:
             end_date = st.date_input("Đến ngày", value=date.today(), label_visibility="collapsed")
         with col3:
             mail_type = st.selectbox("Trạng thái", ["ALL", "Chưa đọc", "Đã đọc"], label_visibility="collapsed")
-        with col4:
-            submitted = st.form_submit_button("🚀 FETCH", type="primary", use_container_width=True)
+
+        st.markdown("**🔎 Lọc (tùy chọn)**")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            sender_filter = st.text_input(
+                "Lọc người gửi",
+                placeholder="alice@example.com, bob@... (phân cách dấu phẩy)",
+                label_visibility="collapsed"
+            )
+        with col_b:
+            subject_filter = st.text_input(
+                "Lọc chủ đề chứa",
+                placeholder="ví dụ: invoice, báo cáo...",
+                label_visibility="collapsed"
+            )
+
+        submitted = st.form_submit_button("🚀 FETCH", type="primary", use_container_width=True)
 
         if submitted:
             imap_conf = get_imap_config()
             if not imap_conf or not all([imap_conf.get("host"), imap_conf.get("username"), imap_conf.get("password")]):
                 st.error("⚠️ Vui lòng cấu hình IMAP trong sidebar!")
                 return
+
+            # Parse filters
+            sender_list = [s.strip() for s in sender_filter.split(",") if s.strip()] if sender_filter else None
+            subject_kw = subject_filter.strip() if subject_filter else None
 
             status = st.status("⏳ Đang kết nối...", state="running")
             try:
@@ -635,13 +678,16 @@ def render_fetch_section():
                     datetime.combine(start_date, datetime.min.time()),
                     datetime.combine(end_date, datetime.max.time()),
                     read_status_map[mail_type],
-                    int(imap_conf.get("port", 993))
+                    int(imap_conf.get("port", 993)),
+                    sender_filters=sender_list,
+                    subject_contains=subject_kw
                 )
                 count = 0
                 for mail in emails:
                     if save_email(mail):
                         count += 1
                 get_all_emails_cached.clear()
+                get_distinct_senders.clear()
                 status.update(label=f"✅ Đã lưu {count} email mới!", state="complete")
             except Exception as e:
                 status.update(label=f"❌ Lỗi: {str(e)[:100]}", state="error")
@@ -675,12 +721,14 @@ def render_email_card(mail):
             """, unsafe_allow_html=True)
 
         with col_info:
-            st.markdown(f"**{subject}**{has_attach}")
-            st.caption(f"{sender} • {date_str}")
+            # Highlight sender name
+            st.markdown(f"**{sender}**")
+            st.markdown(f"<span style='color: var(--text-secondary);'>{subject}</span>{has_attach}", unsafe_allow_html=True)
+            st.caption(date_str)
 
         with col_actions:
-            btn_label = "Đóng" if is_expanded else "Xem"
-            if st.button(btn_label, key=f"btn_{mail_id}", use_container_width=True):
+            btn_label = "▶" if not is_expanded else "🗙"
+            if st.button(btn_label, key=f"btn_{mail_id}", help="Mở/Đóng email", use_container_width=True):
                 st.session_state.expanded_id = None if is_expanded else mail_id
                 st.rerun()
 
@@ -745,6 +793,19 @@ def render_email_list():
     if not emails:
         st.info("📭 Chưa có email nào. Hãy fetch từ IMAP server.", icon="📭")
         return
+
+    # Filter by sender
+    all_senders = get_distinct_senders()
+    selected_senders = st.multiselect(
+        "📌 Lọc theo người gửi",
+        options=all_senders,
+        default=[],
+        help="Chọn một hoặc nhiều người gửi để lọc"
+    )
+
+    # Apply filter
+    if selected_senders:
+        emails = [e for e in emails if e.get("from") in selected_senders]
 
     emails = sorted(emails, key=lambda x: x.get("date", ""), reverse=True)
     st.markdown(f"### 📨 Danh sách email ({len(emails)})")
