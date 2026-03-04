@@ -97,9 +97,37 @@ def get_firebase_db():
     """Initialize Firebase"""
     try:
         if not firebase_admin._apps:
-            if not hasattr(st, "secrets") or "firebase" not in st.secrets:
+            if not hasattr(st, "secrets"):
+                st.session_state.firebase_error = "No secrets found"
                 return None
-            cred = credentials.Certificate(dict(st.secrets["firebase"]))
+            
+            if "firebase" not in st.secrets:
+                st.session_state.firebase_error = "No [firebase] section in secrets"
+                return None
+            
+            # Get firebase config - try different access methods
+            try:
+                fb_config = dict(st.secrets["firebase"])
+            except Exception as e:
+                # Try accessing as attribute
+                try:
+                    fb_section = st.secrets.firebase
+                    fb_config = {k: fb_section[k] for k in fb_section}
+                except:
+                    st.session_state.firebase_error = f"Cannot read firebase secrets: {e}"
+                    return None
+            
+            # Debug: show what keys we got (remove in production)
+            st.session_state.firebase_keys = list(fb_config.keys())
+            
+            # Check required fields (credentials.Certificate needs these)
+            required_fields = ["type", "project_id", "private_key", "client_email"]
+            missing = [f for f in required_fields if f not in fb_config]
+            if missing:
+                st.session_state.firebase_error = f"Missing fields: {missing}. Got: {list(fb_config.keys())}"
+                return None
+            
+            cred = credentials.Certificate(fb_config)
             firebase_admin.initialize_app(cred)
         return firestore.client()
     except Exception as e:
