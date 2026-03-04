@@ -549,15 +549,16 @@ def render_sidebar():
                     value=ai_config.get("api_key", ""),
                     type="password",
                     placeholder="AIza...",
-                    label_visibility="collapsed"
+                    label_visibility="collapsed",
+                    key="ai_api_key"
                 )
                 col1, col2 = st.columns([1,1])
                 with col1:
-                    if st.button("💾 Lưu", use_container_width=True, type="primary"):
+                    if st.button("💾 Lưu", use_container_width=True, type="primary", key="ai_save_btn"):
                         save_ai_config({"api_key": api_key, "model": st.session_state.active_ai})
                         st.toast("Đã lưu AI config", icon="✅")
                 with col2:
-                    if st.button("🔑 Test", use_container_width=True):
+                    if st.button("🔑 Test", use_container_width=True, key="ai_test_btn"):
                         if api_key:
                             try:
                                 genai.configure(api_key=api_key)
@@ -572,18 +573,18 @@ def render_sidebar():
             with tab2:
                 st.markdown("**IMAP Server**")
                 imap_config = get_imap_config()
-                host = st.text_input("Host", value=imap_config.get("host", ""), placeholder="imap.gmail.com")
-                username = st.text_input("Username", value=imap_config.get("username", ""), placeholder="user@example.com")
-                password = st.text_input("Password", value=imap_config.get("password", ""), type="password")
-                port = st.number_input("Port", value=imap_config.get("port", 993), min_value=1, max_value=65535)
+                host = st.text_input("Host", value=imap_config.get("host", ""), placeholder="imap.gmail.com", key="imap_host")
+                username = st.text_input("Username", value=imap_config.get("username", ""), placeholder="user@example.com", key="imap_username")
+                password = st.text_input("Password", value=imap_config.get("password", ""), type="password", key="imap_password")
+                port = st.number_input("Port", value=imap_config.get("port", 993), min_value=1, max_value=65535, key="imap_port")
 
                 col1, col2 = st.columns([1,1])
                 with col1:
-                    if st.button("💾 Lưu", use_container_width=True, type="primary"):
+                    if st.button("💾 Lưu", use_container_width=True, type="primary", key="imap_save_btn"):
                         save_imap_config({"host": host, "username": username, "password": password, "port": int(port), "ssl": True})
                         st.toast("Đã lưu IMAP config", icon="✅")
                 with col2:
-                    if st.button("🧪 Test", use_container_width=True):
+                    if st.button("🧪 Test", use_container_width=True, key="imap_test_btn"):
                         if all([host, username, password]):
                             with st.spinner("Đang kiểm tra..."):
                                 success, msg = test_imap_connection(host, username, password, int(port))
@@ -595,7 +596,7 @@ def render_sidebar():
                             st.toast("Điền đủ thông tin", icon="⚠️")
 
             st.divider()
-            if st.button("🗑️ Xóa tất cả dữ liệu local", use_container_width=True, type="secondary"):
+            if st.button("🗑️ Xóa tất cả dữ liệu local", use_container_width=True, type="secondary", key="clear_offline_btn"):
                 st.session_state.offline_emails = []
                 st.session_state.offline_imap = {}
                 st.session_state.offline_ai = {}
