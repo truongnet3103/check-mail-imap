@@ -2,45 +2,8 @@
 Mail Nexus - Streamlit Email Manager
 """
 import streamlit as st
-import traceback
 
-# Error display helper
-def show_error(e, title="Lỗi"):
-    st.error(f"🚨 **{title}:** {str(e)}")
-    with st.expander("Chi tiết lỗi (debug)"):
-        st.code(traceback.format_exc())
-
-# ============================================================================
-# IMPORTS WITH ERROR HANDLING
-# ============================================================================
-try:
-    import firebase_admin
-    import hashlib
-    import imaplib
-    import ssl
-    import email
-    import requests
-    from firebase_admin import credentials, firestore
-    from email.header import decode_header
-    from email.utils import parsedate_to_datetime
-    from datetime import date, datetime, timedelta
-    
-    # Optional: google-generativeai
-    try:
-        import google.generativeai as genai
-        GENAI_AVAILABLE = True
-    except ImportError:
-        GENAI_AVAILABLE = False
-        
-except Exception as import_error:
-    st.set_page_config(page_title="Mail Nexus - Error")
-    show_error(import_error, "Lỗi import thư viện")
-    st.info("Kiểm tra lại `requirements.txt` và cài đặt dependencies")
-    st.stop()
-
-# ============================================================================
-# PAGE CONFIG
-# ============================================================================
+# ========== PAGE CONFIG (MUST BE FIRST) ==========
 st.set_page_config(
     page_title="Mail Nexus",
     page_icon="✉️",
@@ -48,9 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ============================================================================
-# CUSTOM CSS
-# ============================================================================
+# ========== CUSTOM CSS ==========
 st.markdown("""
 <style>
 #MainMenu, header, .stDeployButton, [data-testid="stStatusWidget"] {display: none !important;}
@@ -62,162 +23,155 @@ st.markdown("""
     background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
     border: none !important;
 }
-.stTextInput > div > div > input,
-.stSelectbox > div > div > div,
-.stDateInput > div > div > input {
-    border-radius: 8px !important;
-    border: 1px solid #e2e8f0 !important;
-}
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================================
-# SESSION STATE
-# ============================================================================
-def init_session_state():
-    defaults = {
-        "expanded_id": None,
-        "translations": {},
-        "ai_summaries": {},
-        "view_modes": {},
-        "active_ai": "gemini-2.5-flash",
-        "firebase_initialized": False
-    }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+# ========== IMPORTS ==========
+import hashlib
+import imaplib
+import ssl
+import email
+import requests
+from email.header import decode_header
+from email.utils import parsedate_to_datetime
+from datetime import date, datetime, timedelta
 
-init_session_state()
+# Firebase - optional
+FIREBASE_OK = False
+FIREBASE_ERROR = None
+try:
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+    FIREBASE_OK = True
+except Exception as e:
+    FIREBASE_ERROR = str(e)
 
-# ============================================================================
-# FIREBASE SERVICES
-# ============================================================================
-@st.cache_resource
-def get_firebase_db():
-    """Initialize Firebase"""
+# GenAI - optional  
+GENAI_OK = False
+try:
+    import google.generativeai as genai
+    GENAI_OK = True
+except:
+    pass
+
+# ========== SESSION STATE ==========
+if "expanded_id" not in st.session_state:
+    st.session_state.expanded_id = None
+if "translations" not in st.session_state:
+    st.session_state.translations = {}
+if "ai_summaries" not in st.session_state:
+    st.session_state.ai_summaries = {}
+if "view_modes" not in st.session_state:
+    st.session_state.view_modes = {}
+if "active_ai" not in st.session_state:
+    st.session_state.active_ai = "gemini-2.5-flash"
+
+# ========== OFFLINE STORAGE ==========
+if "offline_emails" not in st.session_state:
+    st.session_state.offline_emails = []
+if "offline_imap" not in st.session_state:
+    st.session_state.offline_imap = {}
+if "offline_ai" not in st.session_state:
+    st.session_state.offline_ai = {}
+
+# ========== FIREBASE SERVICES ==========
+def get_db():
+    """Get Firestore client or None"""
+    if not FIREBASE_OK:
+        return None
     try:
         if not firebase_admin._apps:
-            if not hasattr(st, "secrets"):
-                st.session_state.firebase_error = "No secrets found"
-                return None
-            
             if "firebase" not in st.secrets:
-                st.session_state.firebase_error = "No [firebase] section in secrets"
                 return None
-            
-            # Get firebase config - try different access methods
-            try:
-                fb_config = dict(st.secrets["firebase"])
-            except Exception as e:
-                # Try accessing as attribute
-                try:
-                    fb_section = st.secrets.firebase
-                    fb_config = {k: fb_section[k] for k in fb_section}
-                except:
-                    st.session_state.firebase_error = f"Cannot read firebase secrets: {e}"
-                    return None
-            
-            # Debug: show what keys we got (remove in production)
-            st.session_state.firebase_keys = list(fb_config.keys())
-            
-            # Check required fields (credentials.Certificate needs these)
-            required_fields = ["type", "project_id", "private_key", "client_email"]
-            missing = [f for f in required_fields if f not in fb_config]
-            if missing:
-                st.session_state.firebase_error = f"Missing fields: {missing}. Got: {list(fb_config.keys())}"
-                return None
-            
-            cred = credentials.Certificate(fb_config)
+            cred = credentials.Certificate(dict(st.secrets["firebase"]))
             firebase_admin.initialize_app(cred)
         return firestore.client()
-    except Exception as e:
-        st.session_state.firebase_error = str(e)
+    except:
         return None
 
+@st.cache_resource
+def get_firebase_db():
+    return get_db()
+
 def save_ai_config(data):
-    try:
-        db = get_firebase_db()
-        if db:
+    db = get_firebase_db()
+    if db:
+        try:
             db.collection("config").document("ai").set(data)
             return True
-    except Exception as e:
-        st.error(f"Lỗi lưu AI config: {e}")
-    return False
+        except:
+            pass
+    # Offline fallback
+    st.session_state.offline_ai.update(data)
+    return True
 
 def get_ai_config():
-    try:
-        db = get_firebase_db()
-        if db:
+    db = get_firebase_db()
+    if db:
+        try:
             doc = db.collection("config").document("ai").get()
             return doc.to_dict() if doc.exists else {}
-    except:
-        pass
-    return {}
+        except:
+            pass
+    return st.session_state.offline_ai
 
 def save_imap_config(data):
-    try:
-        db = get_firebase_db()
-        if db:
+    db = get_firebase_db()
+    if db:
+        try:
             db.collection("config").document("imap").set(data)
             return True
-    except Exception as e:
-        st.error(f"Lỗi lưu IMAP config: {e}")
-    return False
+        except:
+            pass
+    st.session_state.offline_imap.update(data)
+    return True
 
 def get_imap_config():
-    try:
-        db = get_firebase_db()
-        if db:
+    db = get_firebase_db()
+    if db:
+        try:
             doc = db.collection("config").document("imap").get()
             return doc.to_dict() if doc.exists else {}
-    except:
-        pass
-    return {}
+        except:
+            pass
+    return st.session_state.offline_imap
 
-def save_email(email_data: dict):
-    try:
-        db = get_firebase_db()
-        if not db:
-            return False
-        raw_id = email_data.get("message_id") or (email_data.get("subject", "") + email_data.get("date", ""))
-        doc_id = hashlib.md5(raw_id.encode()).hexdigest()
-        db.collection("emails").document(doc_id).set(email_data)
-        return True
-    except Exception as e:
-        st.error(f"Lỗi lưu email: {e}")
-        return False
+def save_email(email_data):
+    db = get_firebase_db()
+    if db:
+        try:
+            raw_id = email_data.get("message_id") or (email_data.get("subject", "") + email_data.get("date", ""))
+            doc_id = hashlib.md5(raw_id.encode()).hexdigest()
+            db.collection("emails").document(doc_id).set(email_data)
+            return True
+        except:
+            pass
+    st.session_state.offline_emails.append(email_data)
+    return True
 
 def get_all_emails():
-    try:
-        db = get_firebase_db()
-        if db:
+    db = get_firebase_db()
+    if db:
+        try:
             docs = db.collection("emails").stream()
             return [doc.to_dict() for doc in docs]
-    except Exception as e:
-        st.error(f"Lỗi đọc emails: {e}")
-    return []
-
-def reset_emails():
-    try:
-        db = get_firebase_db()
-        if db:
-            docs = db.collection("emails").stream()
-            for doc in docs:
-                doc.reference.delete()
-    except Exception as e:
-        st.error(f"Lỗi xóa emails: {e}")
+        except:
+            pass
+    return st.session_state.offline_emails
 
 def delete_email(message_id):
-    try:
-        db = get_firebase_db()
-        if db:
+    db = get_firebase_db()
+    if db:
+        try:
             db.collection("emails").document(message_id).delete()
-    except Exception as e:
-        st.error(f"Lỗi xóa email: {e}")
+        except:
+            pass
+    st.session_state.offline_emails = [
+        e for e in st.session_state.offline_emails 
+        if (e.get("message_id") or hashlib.md5((e.get("subject", "") + e.get("date", "")).encode()).hexdigest()) != message_id
+    ]
 
-# ============================================================================
-# IMAP SERVICES
-# ============================================================================
+# ========== IMAP SERVICES ==========
 def test_imap_connection(host, username, password, port=993):
     try:
         context = ssl.create_default_context()
@@ -310,22 +264,19 @@ def fetch_emails_by_date(host, username, password, start_date, end_date, read_st
                     "from": sender,
                     "date": email_date.isoformat() if email_date else "",
                     "has_attachment": has_attachment,
-                    "snippet": body[:500],
-                    "body_full": body
+                    "snippet": body[:500]
                 })
-            except Exception as e:
+            except:
                 continue
 
         mail.logout()
     except Exception as e:
-        st.error(f"Lỗi fetch emails: {e}")
+        st.error(f"Lỗi fetch: {e}")
     return emails
 
-# ============================================================================
-# AI SERVICES
-# ============================================================================
+# ========== AI SERVICES ==========
 def get_gemini_response(text, prompt_type="summarize"):
-    if not GENAI_AVAILABLE:
+    if not GENAI_OK:
         return "⚠️ Chưa cài google-generativeai"
     
     ai_config = get_ai_config()
@@ -340,8 +291,6 @@ def get_gemini_response(text, prompt_type="summarize"):
         
         if prompt_type == "summarize":
             prompt = f"Tóm tắt email sau bằng tiếng Việt, ngắn gọn:\n\n{text}\n\nTóm tắt:"
-        elif prompt_type == "translate":
-            prompt = f"Dịch sang tiếng Việt:\n\n{text}\n\nBản dịch:"
         else:
             prompt = text
             
@@ -353,22 +302,14 @@ def get_gemini_response(text, prompt_type="summarize"):
 def translate_text_google(text):
     try:
         url = "https://translate.googleapis.com/translate_a/single"
-        params = {
-            "client": "gtx",
-            "sl": "auto",
-            "tl": "vi",
-            "dt": "t",
-            "q": text,
-        }
+        params = {"client": "gtx", "sl": "auto", "tl": "vi", "dt": "t", "q": text}
         r = requests.get(url, params=params, timeout=5)
         data = r.json()
         return "".join([item[0] for item in data[0]])
     except:
         return "❌ Lỗi dịch"
 
-# ============================================================================
-# UI HELPERS
-# ============================================================================
+# ========== UI HELPERS ==========
 def format_date(date_str):
     try:
         dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
@@ -390,17 +331,21 @@ def get_avatar_color(name):
         return colors[0]
     return colors[hash(name) % len(colors)]
 
-# ============================================================================
-# SIDEBAR
-# ============================================================================
+# ========== SIDEBAR ==========
 def render_sidebar():
     with st.sidebar:
+        # Status indicator
+        db = get_firebase_db()
+        if db:
+            st.success("🟢 Firebase OK")
+        else:
+            st.warning("🟡 Offline Mode")
+        
         # Logo
         st.markdown("""
-        <div style="text-align: center; padding: 1rem 0 1.5rem;">
-            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">✉️</div>
-            <h1 style="margin: 0; font-size: 1.5rem; color: #1e293b;">Mail Nexus</h1>
-            <p style="margin: 0; font-size: 0.75rem; color: #64748b;">Email Manager</p>
+        <div style="text-align: center; padding: 1rem 0;">
+            <div style="font-size: 2.5rem;">✉️</div>
+            <h1 style="margin: 0; font-size: 1.5rem;">Mail Nexus</h1>
         </div>
         """, unsafe_allow_html=True)
         
@@ -408,79 +353,50 @@ def render_sidebar():
         
         # AI Model
         st.markdown("🤖 **AI Model**")
-        ai_model = st.selectbox(
-            "Chọn model",
-            ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash"],
-            index=0,
-            label_visibility="collapsed"
-        )
+        ai_model = st.selectbox("Model", ["gemini-2.5-flash", "gemini-2.5-pro"], label_visibility="collapsed")
         st.session_state.active_ai = ai_model
         
-        if not GENAI_AVAILABLE:
-            st.warning("⚠️ google-generativeai chưa được cài")
+        if not GENAI_OK:
+            st.warning("⚠️ google-generativeai chưa cài")
         
         st.divider()
         
         # Stats
-        try:
-            emails = get_all_emails()
-            st.markdown(f"""
-            <div style="background: #f8fafc; border-radius: 12px; padding: 1rem;">
-                <div style="font-size: 0.75rem; color: #64748b;">Tổng email</div>
-                <div style="font-size: 1.5rem; font-weight: 600; color: #1e293b;">{len(emails)}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        except:
-            pass
+        emails = get_all_emails()
+        st.markdown(f"**{len(emails)}** emails")
         
-        # Spacer
-        st.markdown("<div style='height: 15vh;'></div>", unsafe_allow_html=True)
+        # Config
+        st.markdown("<div style='height: 10vh;'></div>", unsafe_allow_html=True)
         
-        # Config section
         with st.expander("⚙️ Cấu hình", expanded=False):
-            st.markdown("**🤖 AI Configuration**")
+            st.markdown("**🤖 AI**")
             ai_config = get_ai_config()
-            api_key = st.text_input(
-                "Gemini API Key",
-                value=ai_config.get("api_key", ""),
-                type="password",
-                placeholder="Nhập API Key..."
-            )
-            
-            if st.button("💾 Lưu AI Config", use_container_width=True):
-                if save_ai_config({"api_key": api_key, "model": ai_model}):
-                    st.success("Đã lưu!")
+            api_key = st.text_input("API Key", value=ai_config.get("api_key", ""), type="password")
+            if st.button("💾 Lưu AI", use_container_width=True):
+                save_ai_config({"api_key": api_key, "model": ai_model})
+                st.success("Đã lưu!")
             
             st.divider()
             
-            st.markdown("**📧 IMAP Configuration**")
+            st.markdown("**📧 IMAP**")
             imap_config = get_imap_config()
-            
-            host = st.text_input("IMAP Host", value=imap_config.get("host", ""), placeholder="imap.gmail.com")
-            username = st.text_input("Username", value=imap_config.get("username", ""), placeholder="email@gmail.com")
-            password = st.text_input("Password/App Password", value=imap_config.get("password", ""), type="password")
+            host = st.text_input("Host", value=imap_config.get("host", ""), placeholder="imap.gmail.com")
+            username = st.text_input("Username", value=imap_config.get("username", ""))
+            password = st.text_input("Password", value=imap_config.get("password", ""), type="password")
             
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("💾 Lưu", use_container_width=True):
-                    if save_imap_config({"host": host, "username": username, "password": password, "port": 993, "ssl": True}):
-                        st.success("Đã lưu!")
-            
+                    save_imap_config({"host": host, "username": username, "password": password, "port": 993, "ssl": True})
+                    st.success("Đã lưu!")
             with col2:
                 if st.button("🧪 Test", use_container_width=True):
                     if all([host, username, password]):
                         with st.spinner("Testing..."):
                             success, msg = test_imap_connection(host, username, password)
-                            if success:
-                                st.success(msg)
-                            else:
-                                st.error(msg[:50])
-                    else:
-                        st.error("Nhập đủ thông tin!")
+                            st.success(msg) if success else st.error(msg[:50])
 
-# ============================================================================
-# MAIN CONTENT
-# ============================================================================
+# ========== MAIN CONTENT ==========
 def render_fetch_section():
     st.markdown("### 📥 Lấy Email Mới")
     
@@ -500,9 +416,7 @@ def render_fetch_section():
             else:
                 with st.spinner("⏳ Đang kết nối..."):
                     emails = fetch_emails_by_date(
-                        imap_conf["host"],
-                        imap_conf["username"],
-                        imap_conf["password"],
+                        imap_conf["host"], imap_conf["username"], imap_conf["password"],
                         datetime.combine(start_date, datetime.min.time()),
                         datetime.combine(end_date, datetime.max.time()),
                         mail_type
@@ -512,134 +426,91 @@ def render_fetch_section():
                     st.success(f"✅ Đã lấy {len(emails)} email!")
 
 def render_email_list():
-    try:
-        emails = get_all_emails()
-    except Exception as e:
-        st.error(f"Lỗi đọc danh sách email: {e}")
-        return
+    emails = get_all_emails()
     
     if not emails:
         st.info("📭 Chưa có email. Hãy fetch từ IMAP server.")
         return
     
     emails = sorted(emails, key=lambda x: x.get("date", ""), reverse=True)
-    st.markdown(f"### 📨 Danh sách Email ({len(emails)})")
+    st.markdown(f"### 📨 Danh sách ({len(emails)})")
     
     for mail in emails:
         mail_id = mail.get("message_id", "") or hashlib.md5((mail.get("subject", "") + mail.get("date", "")).encode()).hexdigest()
         is_expanded = st.session_state.expanded_id == mail_id
         
-        with st.container():
-            col_avatar, col_info, col_actions = st.columns([0.5, 6, 1.5])
+        col_avatar, col_info, col_actions = st.columns([0.5, 6, 1.5])
+        
+        with col_avatar:
+            sender = mail.get("from", "Unknown")
+            color = get_avatar_color(sender)
+            initials = get_initials(sender)
+            st.markdown(f'<div style="width: 40px; height: 40px; border-radius: 50%; background: {color}; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;">{initials}</div>', unsafe_allow_html=True)
+        
+        with col_info:
+            subject = mail.get("subject", "(Không tiêu đề)")
+            date_str = format_date(mail.get("date", ""))
+            has_attach = " 📎" if mail.get("has_attachment") else ""
+            st.markdown(f"**{subject}**{has_attach}")
+            st.caption(f"{sender} • {date_str}")
+        
+        with col_actions:
+            if st.button("Xem" if not is_expanded else "Đóng", key=f"btn_{mail_id}", use_container_width=True):
+                st.session_state.expanded_id = None if is_expanded else mail_id
+                st.rerun()
+        
+        if is_expanded:
+            current_mode = st.session_state.view_modes.get(mail_id, "original")
             
-            with col_avatar:
-                sender = mail.get("from", "Unknown")
-                color = get_avatar_color(sender)
-                initials = get_initials(sender)
-                st.markdown(f"""
-                <div style="width: 40px; height: 40px; border-radius: 50%; background: {color};
-                    display: flex; align-items: center; justify-content: center;
-                    color: white; font-weight: 600; font-size: 0.9rem;">{initials}</div>
-                """, unsafe_allow_html=True)
+            col1, col2, col3, col4 = st.columns([1, 1, 1, 3])
             
-            with col_info:
-                subject = mail.get("subject", "(Không tiêu đề)")
-                date_str = format_date(mail.get("date", ""))
-                has_attach = " 📎" if mail.get("has_attachment") else ""
-                st.markdown(f"**{subject}**{has_attach}")
-                st.caption(f"{sender} • {date_str}")
-            
-            with col_actions:
-                if st.button("Xem" if not is_expanded else "Đóng", key=f"btn_{mail_id}", use_container_width=True):
-                    st.session_state.expanded_id = None if is_expanded else mail_id
+            with col1:
+                if st.button("📄 Gốc", key=f"orig_{mail_id}", type="primary" if current_mode == "original" else "secondary", use_container_width=True):
+                    st.session_state.view_modes[mail_id] = "original"
                     st.rerun()
             
-            if is_expanded:
-                with st.container():
-                    st.markdown("<div style='padding: 1rem; background: #f8fafc; border-radius: 12px; margin: 0.5rem 0 1rem;'>", unsafe_allow_html=True)
-                    
-                    current_mode = st.session_state.view_modes.get(mail_id, "original")
-                    
-                    col1, col2, col3, col4 = st.columns([1, 1, 1, 3])
-                    
-                    with col1:
-                        if st.button("📄 Gốc", key=f"orig_{mail_id}", 
-                                   type="primary" if current_mode == "original" else "secondary",
-                                   use_container_width=True):
-                            st.session_state.view_modes[mail_id] = "original"
-                            st.rerun()
-                    
-                    with col2:
-                        if st.button("🌐 Dịch", key=f"trans_{mail_id}",
-                                   type="primary" if current_mode == "translate" else "secondary",
-                                   use_container_width=True):
-                            st.session_state.view_modes[mail_id] = "translate"
-                            if mail_id not in st.session_state.translations:
-                                with st.spinner("Đang dịch..."):
-                                    st.session_state.translations[mail_id] = translate_text_google(mail.get("snippet", ""))
-                            st.rerun()
-                    
-                    with col3:
-                        if st.button("🤖 AI", key=f"ai_{mail_id}",
-                                   type="primary" if current_mode == "ai" else "secondary",
-                                   use_container_width=True):
-                            st.session_state.view_modes[mail_id] = "ai"
-                            if mail_id not in st.session_state.ai_summaries:
-                                with st.spinner("AI đang phân tích..."):
-                                    st.session_state.ai_summaries[mail_id] = get_gemini_response(mail.get("snippet", ""), "summarize")
-                            st.rerun()
-                    
-                    with col4:
-                        if st.button("🗑️ Xóa", key=f"del_{mail_id}", use_container_width=True):
-                            delete_email(mail_id)
-                            st.success("Đã xóa!")
-                            st.rerun()
-                    
-                    st.divider()
-                    
-                    if current_mode == "original":
-                        st.markdown("**Nội dung gốc:**")
-                        st.text_area("", value=mail.get("snippet", ""), height=150, disabled=True, label_visibility="collapsed")
-                    elif current_mode == "translate":
-                        st.markdown("**🌐 Bản dịch:**")
-                        translated = st.session_state.translations.get(mail_id, "Đang dịch...")
-                        st.text_area("", value=translated, height=150, disabled=True, label_visibility="collapsed")
-                    elif current_mode == "ai":
-                        st.markdown("**🤖 Phân tích AI:**")
-                        ai_result = st.session_state.ai_summaries.get(mail_id, "Đang phân tích...")
-                        st.info(ai_result)
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
+            with col2:
+                if st.button("🌐 Dịch", key=f"trans_{mail_id}", type="primary" if current_mode == "translate" else "secondary", use_container_width=True):
+                    st.session_state.view_modes[mail_id] = "translate"
+                    if mail_id not in st.session_state.translations:
+                        with st.spinner("Đang dịch..."):
+                            st.session_state.translations[mail_id] = translate_text_google(mail.get("snippet", ""))
+                    st.rerun()
             
-            st.divider()
+            with col3:
+                if st.button("🤖 AI", key=f"ai_{mail_id}", type="primary" if current_mode == "ai" else "secondary", use_container_width=True):
+                    st.session_state.view_modes[mail_id] = "ai"
+                    if mail_id not in st.session_state.ai_summaries:
+                        with st.spinner("AI đang phân tích..."):
+                            st.session_state.ai_summaries[mail_id] = get_gemini_response(mail.get("snippet", ""), "summarize")
+                    st.rerun()
+            
+            with col4:
+                if st.button("🗑️ Xóa", key=f"del_{mail_id}", use_container_width=True):
+                    delete_email(mail_id)
+                    st.success("Đã xóa!")
+                    st.rerun()
+            
+            if current_mode == "original":
+                st.text_area("", value=mail.get("snippet", ""), height=150, disabled=True, label_visibility="collapsed")
+            elif current_mode == "translate":
+                st.text_area("", value=st.session_state.translations.get(mail_id, "Đang dịch..."), height=150, disabled=True, label_visibility="collapsed")
+            elif current_mode == "ai":
+                st.info(st.session_state.ai_summaries.get(mail_id, "Đang phân tích..."))
+        
+        st.divider()
 
-# ============================================================================
-# MAIN
-# ============================================================================
-def main():
-    # Check Firebase
-    db = get_firebase_db()
-    if not db:
-        if "firebase_error" in st.session_state:
-            st.error(f"🔥 Firebase Error: {st.session_state.firebase_error}")
-        else:
-            st.warning("⚠️ Chưa kết nối Firebase. Vui lòng thêm secrets trong Settings.")
-    else:
-        st.session_state.firebase_initialized = True
-    
-    render_sidebar()
-    
-    st.markdown("""
-    <div style="padding: 1rem 0;">
-        <h1 style="color: #1e293b; margin: 0;">Mail Nexus</h1>
-        <p style="color: #64748b; margin: 0;">Quản lý email IMAP thông minh với AI</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.divider()
-    render_fetch_section()
-    st.divider()
-    render_email_list()
+# ========== MAIN ==========
+render_sidebar()
 
-if __name__ == "__main__":
-    main()
+st.markdown("""
+<div style="padding: 1rem 0;">
+    <h1 style="color: #1e293b; margin: 0;">Mail Nexus</h1>
+    <p style="color: #64748b; margin: 0;">Quản lý email IMAP thông minh với AI</p>
+</div>
+""", unsafe_allow_html=True)
+
+st.divider()
+render_fetch_section()
+st.divider()
+render_email_list()
